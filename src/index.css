@@ -1,0 +1,114 @@
+@import "tailwindcss";
+
+/* ════════════════════════════════════════════════════════════════
+   ⚠️  NOTA IMPORTANTE SOBRE LA PALETA
+   Este tema REASIGNA los colores estándar de Tailwind a tonos cálidos
+   de marca. Consecuencia clave para quien edite la app:
+     • `blue-*`  NO es azul → es el VERDE OLIVO de marca (acciones primarias)
+     • `slate-*` / `gray-*` → cremas y cafés cálidos
+     • `emerald` / `amber` / `red`  NO se reasignan → siguen siendo
+       verde / ámbar / rojo reales (se usan para semáforos y estados)
+   Por eso `bg-blue-600`, `text-blue-600`, etc. pintan verde, no azul.
+   ════════════════════════════════════════════════════════════════ */
+
+@theme {
+  --font-sans: 'Avenir Next', 'Segoe UI', system-ui, -apple-system, sans-serif;
+
+  /* ── Paleta cálida La Pastora ── */
+  --color-white: #fffaf1;
+  --color-black: #2b211a;
+
+  /* slate → cremas y cafés cálidos */
+  --color-slate-50:  #fffaf1;
+  --color-slate-100: #f4ead9;
+  --color-slate-200: #e8d3a8;
+  --color-slate-300: #d4ba85;
+  --color-slate-400: #b7a08a;
+  --color-slate-500: #9f8a75;
+  --color-slate-600: #75695d;
+  --color-slate-700: #4a3d32;
+  --color-slate-800: #2b211a;
+  --color-slate-900: #1a1410;
+  --color-slate-950: #100d0a;
+
+  /* gray → mismo espectro cálido */
+  --color-gray-50:  #fffaf1;
+  --color-gray-100: #f4ead9;
+  --color-gray-200: #e8d3a8;
+  --color-gray-300: #d4ba85;
+  --color-gray-400: #b7a08a;
+  --color-gray-500: #9f8a75;
+  --color-gray-600: #75695d;
+  --color-gray-700: #4a3d32;
+  --color-gray-800: #2b211a;
+  --color-gray-900: #1a1410;
+  --color-gray-950: #100d0a;
+
+  /* blue → verde olivo / hierba (acciones primarias) */
+  --color-blue-50:  #ebf0ec;
+  --color-blue-100: #d6e1d8;
+  --color-blue-200: #b3c8b8;
+  --color-blue-300: #8aaa91;
+  --color-blue-400: #63765b;
+  --color-blue-500: #4d6554;
+  --color-blue-600: #31483a;
+  --color-blue-700: #263a2e;
+  --color-blue-800: #1a2b22;
+  --color-blue-900: #0f1c16;
+  --color-blue-950: #091410;
+}
+
+/* ── Variables CSS para uso manual ── */
+:root {
+  --milk:   #fffaf1;
+  --whey:   #f4ead9;
+  --curd:   #e8d3a8;
+  --rind:   #b7833d;
+  --copper: #9f5d36;
+  --sage:   #63765b;
+  --herb:   #31483a;
+  --ink:    #2b211a;
+  --muted:  #75695d;
+  --line:        rgba(62, 45, 31, 0.14);
+  --line-strong: rgba(62, 45, 31, 0.26);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  /* Fondo cuadriculado cálido igual al HTML prototipo */
+  background:
+    linear-gradient(90deg, rgba(99, 118, 91, 0.08) 1px, transparent 1px),
+    linear-gradient(rgba(159, 93, 54, 0.05) 1px, transparent 1px),
+    var(--milk);
+  background-size: 34px 34px;
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  min-height: 100svh;
+  display: flex;
+}
+
+/* Scrollbar sutil */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--curd);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--rind);
+}
