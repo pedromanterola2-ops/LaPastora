@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>La Pastora | Gestión</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 :root {
   --milk:#fffaf1; --whey:#f4ead9; --curd:#e8d3a8; --rind:#b7833d;
@@ -682,6 +683,7 @@ let cajaActiva = { s1:null, s2:null }; // {storeId: {abierta:timestamp, userId, 
 function saveData(){
   const d={products,categories,inventory,sales,purchases,mermaList,traslados,movimientos,cajaLog,cajaActiva};
   try{localStorage.setItem('lp_data',JSON.stringify(d));}catch(e){}
+  if(!applyingRemote) schedulePush();   // ← sincroniza con la nube (otras tiendas)
 }
 function loadData(){
   try{
@@ -2086,16 +2088,20 @@ function resetApp(){
   overlay.appendChild(box);
   document.body.appendChild(overlay);
 
-  box.querySelector('#rbtn-demo').onclick=()=>{
+  box.querySelector('#rbtn-demo').onclick=async ()=>{
     localStorage.removeItem('lp_data');
     initDemoData();
+    await cloudPush();           // propaga el reinicio a la nube (y a la otra tienda)
     location.reload();
   };
-  box.querySelector('#rbtn-empty').onclick=()=>{
-    localStorage.setItem('lp_data',JSON.stringify({
-      products:[],inventory:{s1:{},s2:{}},sales:[],purchases:[],
+  box.querySelector('#rbtn-empty').onclick=async ()=>{
+    applyData({
+      products:[],categories:['Quesos frescos','Quesos maduros','Cremas','Otros derivados'],
+      inventory:{central:{},s1:{},s2:{}},sales:[],purchases:[],
       mermaList:[],traslados:[],movimientos:[],cajaLog:[],cajaActiva:{s1:null,s2:null}
-    }));
+    });
+    try{localStorage.setItem('lp_data',JSON.stringify(collectData()));}catch(e){}
+    await cloudPush();           // propaga el reinicio a la nube (y a la otra tienda)
     location.reload();
   };
   box.querySelector('#rbtn-cancel').onclick=()=>overlay.remove();
@@ -2103,10 +2109,130 @@ function resetApp(){
 }
 
 // ═══════════════════════════════════════════════
+//  NUBE — Supabase (sincronización entre las 2 tiendas)
+// ═══════════════════════════════════════════════
+const SUPA_URL   = 'https://ygeuqlohycckwngcmmxl.supabase.co';     // ← se inyecta desde app/.env
+const SUPA_KEY   = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlnZXVxbG9oeWNja3duZ2NtbXhsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAyNDE1MTksImV4cCI6MjA5NTgxNzUxOX0.fuFaUcYKaTjBpunDqIc-xMIGm3gA17r5Cn_E_JxFR_Q'; // ← llave pública (anon), segura en cliente
+const CLOUD_TABLE  = 'app_estado';
+const CLOUD_ROW_ID = 'lp_main';
+const CLIENT_ID = Math.random().toString(36).slice(2) + Date.now().toString(36);
+
+let supa = null;
+let cloudOK = false;        // la nube está disponible y conectada
+let applyingRemote = false; // un cambio remoto en curso → no re-empujar (evita bucles)
+let pushTimer = null;
+let pushPending = false;
+
+// Reúne todo el estado en un solo objeto (mismo formato que localStorage)
+function collectData(){
+  return {products,categories,inventory,sales,purchases,mermaList,traslados,movimientos,cajaLog,cajaActiva};
+}
+// Vuelca un objeto de datos a las variables globales (reusado por carga local, nube y realtime)
+function applyData(d){
+  if(!d) return;
+  products    = d.products    || [];
+  categories  = d.categories  || ['Quesos frescos','Quesos maduros','Cremas','Otros derivados'];
+  inventory   = d.inventory   || {central:{},s1:{},s2:{}};
+  if(!inventory.central) inventory.central={};
+  sales       = d.sales       || [];
+  purchases   = d.purchases   || [];
+  mermaList   = d.mermaList   || [];
+  traslados   = d.traslados   || [];
+  movimientos = d.movimientos || [];
+  cajaLog     = d.cajaLog     || [];
+  cajaActiva  = d.cajaActiva  || {s1:null,s2:null};
+}
+
+// ── Indicador de estado de conexión (pastilla fija, no intrusiva) ──
+function setCloudBadge(status){
+  let b = document.getElementById('cloud-badge');
+  if(!b){
+    b = document.createElement('div');
+    b.id = 'cloud-badge';
+    b.style.cssText = 'position:fixed;bottom:12px;right:12px;z-index:9999;font-size:11px;font-weight:700;'
+      + 'padding:6px 11px;border-radius:999px;font-family:inherit;box-shadow:0 2px 8px rgba(0,0,0,.12);'
+      + 'cursor:default;transition:opacity .3s;user-select:none';
+    document.body.appendChild(b);
+  }
+  const map = {
+    online:  ['🟢 Sincronizado',      '#e6f4ea', '#1d7a3f', '#bfe3c9'],
+    syncing: ['🔄 Actualizando…',     '#fff6e0', '#9a6a00', '#f0dca0'],
+    local:   ['🟡 Solo local',        '#fff3cd', '#8a6d00', '#f0e0a0'],
+    offline: ['🔴 Sin conexión',      '#fdecea', '#a83d34', '#f3c6c1'],
+  };
+  const [txt,bg,fg,bd] = map[status] || map.local;
+  b.textContent = txt;
+  b.style.background = bg; b.style.color = fg; b.style.border = '1px solid '+bd;
+  if(status==='syncing'){ clearTimeout(b._t); b._t=setTimeout(()=>setCloudBadge(cloudOK?'online':'local'),900); }
+}
+
+// ── Inicializa la nube: crea cliente, baja datos y se suscribe a cambios ──
+async function cloudInit(){
+  try{
+    if(!window.supabase || SUPA_URL.indexOf('__SUPABASE')===0){
+      setCloudBadge('local'); return;              // sin librería o sin credenciales → modo local
+    }
+    supa = window.supabase.createClient(SUPA_URL, SUPA_KEY);
+    const { data, error } = await supa.from(CLOUD_TABLE).select('data').eq('id',CLOUD_ROW_ID).maybeSingle();
+    if(error){ console.warn('[nube] no disponible:', error.message); setCloudBadge('local'); return; }
+    cloudOK = true;
+    const remote = data && data.data;
+    const hasRemote = remote && Object.keys(remote).length && (remote.products!==undefined);
+    if(hasRemote){
+      applyingRemote = true; applyData(remote); applyingRemote = false;   // la nube manda
+      try{ localStorage.setItem('lp_data', JSON.stringify(collectData())); }catch(e){}
+    } else {
+      await cloudPush();                            // fila vacía → subir lo que haya local
+    }
+    subscribeRealtime();
+    setCloudBadge('online');
+  }catch(e){ console.warn('[nube] error init', e); setCloudBadge('offline'); }
+}
+
+// ── Sube el estado completo a la nube ──
+async function cloudPush(){
+  if(!cloudOK || !supa) return;
+  try{
+    setCloudBadge('syncing');
+    const { error } = await supa.from(CLOUD_TABLE)
+      .upsert({ id:CLOUD_ROW_ID, data:collectData(), origin:CLIENT_ID, updated_at:new Date().toISOString() });
+    if(error){ console.warn('[nube] push falló:', error.message); setCloudBadge('offline'); }
+    else { if(pushPending){ pushPending=false; } setCloudBadge('online'); }
+  }catch(e){ console.warn('[nube] push error', e); setCloudBadge('offline'); }
+}
+
+// ── Empuje con retraso (agrupa cambios rápidos en una sola escritura) ──
+function schedulePush(){
+  if(!cloudOK){ return; }
+  pushPending = true;
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(cloudPush, 500);
+}
+
+// ── Escucha cambios de la OTRA tienda y refresca la pantalla ──
+function subscribeRealtime(){
+  supa.channel('lp_estado_'+CLOUD_ROW_ID)
+    .on('postgres_changes',
+      { event:'*', schema:'public', table:CLOUD_TABLE, filter:'id=eq.'+CLOUD_ROW_ID },
+      (payload)=>{
+        const row = payload.new;
+        if(!row || row.origin===CLIENT_ID) return;   // ignora el eco de nuestros propios cambios
+        applyingRemote = true;
+        applyData(row.data);
+        try{ localStorage.setItem('lp_data', JSON.stringify(collectData())); }catch(e){}
+        applyingRemote = false;
+        if(state.user){ renderShell(); refreshPage(); }   // re-pinta la vista actual con datos frescos
+        setCloudBadge('syncing');
+      })
+    .subscribe((st)=>{ if(st==='SUBSCRIBED') setCloudBadge('online'); });
+}
+
+// ═══════════════════════════════════════════════
 //  INIT
 // ═══════════════════════════════════════════════
-document.addEventListener('DOMContentLoaded',()=>{
-  loadData();
+document.addEventListener('DOMContentLoaded', async ()=>{
+  loadData();                 // 1) carga local → arranque instantáneo y respaldo offline
+  await cloudInit();          // 2) intenta la nube → si hay datos compartidos, re-hidrata
   renderLogin();
   $('topbar-eyebrow').textContent='Quesería artesanal';
 });
