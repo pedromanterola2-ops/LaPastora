@@ -12,13 +12,17 @@ const UNIDADES = [
 ]
 
 const EMPTY = {
-  nombre:                  '',
-  categoria:               '',
-  unidad_venta:            'pieza',
-  precio_venta:            '',
-  existencia_minima:       '0',
-  dias_caducidad_estimado: '',
-  activo:                  true,
+  sku:               '',
+  nombre:            '',
+  categoria:         '',
+  contenido:         '1',
+  unidad_venta:      'pieza',
+  costo:             '',
+  precio_venta:      '',
+  fecha_caducidad:   '',
+  cantidad_inicial:  '',
+  existencia_minima: '0',
+  activo:            true,
 }
 
 function Campo({ label, required, hint, children }) {
@@ -66,13 +70,17 @@ export default function ProductoForm() {
       getProducto(id)
         .then(p => {
           setForm({
-            nombre:                  p.nombre,
-            categoria:               p.categoria ?? '',
-            unidad_venta:            p.unidad_venta,
-            precio_venta:            String(p.precio_venta),
-            existencia_minima:       String(p.existencia_minima),
-            dias_caducidad_estimado: p.dias_caducidad_estimado ? String(p.dias_caducidad_estimado) : '',
-            activo:                  p.activo,
+            sku:               p.sku ?? '',
+            nombre:            p.nombre,
+            categoria:         p.categoria ?? '',
+            contenido:         p.contenido != null ? String(p.contenido) : '1',
+            unidad_venta:      p.unidad_venta,
+            costo:             p.costo != null ? String(p.costo) : '',
+            precio_venta:      String(p.precio_venta),
+            fecha_caducidad:   p.fecha_caducidad ?? '',
+            cantidad_inicial:  '',
+            existencia_minima: String(p.existencia_minima),
+            activo:            p.activo,
           })
           setStock(p.stock)
         })
@@ -83,22 +91,33 @@ export default function ProductoForm() {
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
+  // Margen estimado (precio - costo)
+  const costoNum   = parseFloat(form.costo)
+  const precioNum  = parseFloat(form.precio_venta)
+  const margen = (!isNaN(costoNum) && !isNaN(precioNum) && precioNum > 0)
+    ? precioNum - costoNum
+    : null
+  const margenPct = (margen != null && precioNum > 0) ? (margen / precioNum) * 100 : null
+
   async function guardar(e) {
     e.preventDefault()
     if (!form.nombre.trim()) { toast.error('El nombre es obligatorio'); return }
     const precio = parseFloat(form.precio_venta)
     if (isNaN(precio) || precio < 0) { toast.error('Precio inválido'); return }
+    const costo = form.costo === '' ? 0 : parseFloat(form.costo)
+    if (isNaN(costo) || costo < 0) { toast.error('Costo inválido'); return }
 
     const payload = {
-      nombre:                  form.nombre.trim(),
-      categoria:               form.categoria.trim() || null,
-      unidad_venta:            form.unidad_venta,
-      precio_venta:            precio,
-      existencia_minima:       Math.max(0, parseFloat(form.existencia_minima) || 0),
-      dias_caducidad_estimado: form.dias_caducidad_estimado
-                                 ? parseInt(form.dias_caducidad_estimado, 10)
-                                 : null,
-      activo: form.activo,
+      sku:               form.sku.trim() || null,
+      nombre:            form.nombre.trim(),
+      categoria:         form.categoria.trim() || null,
+      contenido:         Math.max(0.0001, parseFloat(form.contenido) || 1),
+      unidad_venta:      form.unidad_venta,
+      costo,
+      precio_venta:      precio,
+      fecha_caducidad:   form.fecha_caducidad || null,
+      existencia_minima: Math.max(0, parseFloat(form.existencia_minima) || 0),
+      activo:            form.activo,
     }
 
     setGuardando(true)
@@ -107,12 +126,20 @@ export default function ProductoForm() {
         await updateProducto(id, payload)
         toast.success('Producto actualizado')
       } else {
-        await createProducto(payload)
-        toast.success('Producto creado')
+        const cantidad_inicial = Math.max(0, parseFloat(form.cantidad_inicial) || 0)
+        await createProducto({ ...payload, cantidad_inicial })
+        toast.success(
+          cantidad_inicial > 0
+            ? `Producto creado · ${cantidad_inicial} en Central`
+            : 'Producto creado'
+        )
       }
       navigate('/productos')
     } catch (err) {
-      toast.error(err?.message || 'Error al guardar')
+      const msg = /idx_productos_sku_unico|duplicate key/i.test(err?.message || '')
+        ? 'Ya existe un producto con ese SKU'
+        : (err?.message || 'Error al guardar')
+      toast.error(msg)
     } finally { setGuardando(false) }
   }
 
@@ -131,6 +158,7 @@ export default function ProductoForm() {
       <div className="flex items-center gap-3">
         <button
           onClick={() => navigate('/productos')}
+          aria-label="Volver a productos"
           className="p-2 -ml-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
         >
           <ChevronLeft size={20} />
@@ -166,17 +194,27 @@ export default function ProductoForm() {
       {/* ── Formulario ── */}
       <form onSubmit={guardar} className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100">
 
-        {/* Nombre */}
-        <div className="p-5">
-          <Campo label="Nombre" required>
+        {/* SKU + Nombre */}
+        <div className="p-5 grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <Campo label="Código SKU" hint="Único">
             <Input
-              autoFocus={!esEdicion}
-              value={form.nombre}
-              onChange={e => set('nombre', e.target.value)}
-              placeholder="ej. Queso Oaxaca 500g"
-              maxLength={120}
+              value={form.sku}
+              onChange={e => set('sku', e.target.value)}
+              placeholder="ej. QOX-01"
+              maxLength={40}
             />
           </Campo>
+          <div className="sm:col-span-2">
+            <Campo label="Nombre" required>
+              <Input
+                autoFocus={!esEdicion}
+                value={form.nombre}
+                onChange={e => set('nombre', e.target.value)}
+                placeholder="ej. Queso Oaxaca"
+                maxLength={120}
+              />
+            </Campo>
+          </div>
         </div>
 
         {/* Categoría */}
@@ -198,9 +236,19 @@ export default function ProductoForm() {
           </Campo>
         </div>
 
-        {/* Unidad + Precio */}
+        {/* Contenido + Unidad */}
         <div className="p-5 grid grid-cols-2 gap-4">
-          <Campo label="Unidad de venta">
+          <Campo label="Cantidad" hint="Contenido por presentación">
+            <Input
+              type="number"
+              value={form.contenido}
+              onChange={e => set('contenido', e.target.value)}
+              placeholder="1"
+              min="0"
+              step="any"
+            />
+          </Campo>
+          <Campo label="Unidad">
             <select
               value={form.unidad_venta}
               onChange={e => set('unidad_venta', e.target.value)}
@@ -209,6 +257,29 @@ export default function ProductoForm() {
             >
               {UNIDADES.map(u => <option key={u} value={u}>{u}</option>)}
             </select>
+            {form.contenido && (
+              <p className="text-xs text-slate-500 mt-1">
+                Presentación: <span className="font-medium">{form.contenido} {form.unidad_venta}</span>
+              </p>
+            )}
+          </Campo>
+        </div>
+
+        {/* Costo + Precio */}
+        <div className="p-5 grid grid-cols-2 gap-4">
+          <Campo label="Costo de compra" hint="Lo que te cuesta a ti">
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
+              <Input
+                type="number"
+                value={form.costo}
+                onChange={e => set('costo', e.target.value)}
+                placeholder="0.00"
+                min="0"
+                step="0.01"
+                className="pl-7"
+              />
+            </div>
           </Campo>
 
           <Campo label="Precio de venta" required>
@@ -224,18 +295,30 @@ export default function ProductoForm() {
                 className="pl-7"
               />
             </div>
-            {form.precio_venta && !isNaN(parseFloat(form.precio_venta)) && (
-              <p className="text-xs text-slate-500 mt-1">{moneda(parseFloat(form.precio_venta))}</p>
-            )}
           </Campo>
         </div>
 
-        {/* Existencia mínima + Caducidad */}
+        {/* Margen estimado */}
+        {margen != null && (
+          <div className="px-5 py-3 flex items-center justify-between text-sm">
+            <span className="text-slate-500">Margen estimado</span>
+            <span className={`font-semibold ${margen < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+              {moneda(margen)}{margenPct != null && ` · ${margenPct.toFixed(0)}%`}
+            </span>
+          </div>
+        )}
+
+        {/* Caducidad + Existencia mínima */}
         <div className="p-5 grid grid-cols-2 gap-4">
-          <Campo
-            label="Existencia mínima"
-            hint="Activa la alerta de stock bajo"
-          >
+          <Campo label="Fecha de caducidad" hint="Opcional">
+            <Input
+              type="date"
+              value={form.fecha_caducidad}
+              onChange={e => set('fecha_caducidad', e.target.value)}
+            />
+          </Campo>
+
+          <Campo label="Existencia mínima" hint="Activa la alerta de stock bajo">
             <Input
               type="number"
               value={form.existencia_minima}
@@ -245,21 +328,26 @@ export default function ProductoForm() {
               step="1"
             />
           </Campo>
-
-          <Campo
-            label="Días de caducidad"
-            hint="Estimado desde la fecha de compra"
-          >
-            <Input
-              type="number"
-              value={form.dias_caducidad_estimado}
-              onChange={e => set('dias_caducidad_estimado', e.target.value)}
-              placeholder="ej. 30"
-              min="1"
-              step="1"
-            />
-          </Campo>
         </div>
+
+        {/* Cantidad inicial (solo al crear) */}
+        {!esEdicion && (
+          <div className="p-5">
+            <Campo
+              label="Cantidad inicial"
+              hint="Existencias que ya tienes. Entra como stock en la bodega Central."
+            >
+              <Input
+                type="number"
+                value={form.cantidad_inicial}
+                onChange={e => set('cantidad_inicial', e.target.value)}
+                placeholder="0"
+                min="0"
+                step="any"
+              />
+            </Campo>
+          </div>
+        )}
 
         {/* Activo */}
         <div className="p-5 flex items-center justify-between">
@@ -272,6 +360,7 @@ export default function ProductoForm() {
           <button
             type="button"
             onClick={() => set('activo', !form.activo)}
+            aria-label={form.activo ? 'Desactivar producto' : 'Activar producto'}
             className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
               form.activo ? 'bg-emerald-500' : 'bg-slate-200'
             }`}

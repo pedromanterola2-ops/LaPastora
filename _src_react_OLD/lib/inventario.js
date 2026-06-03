@@ -83,6 +83,35 @@ export async function getAlertasStockBajo() {
 }
 
 export async function getProductosProximosACaducar(dias = 7) {
+  const hoy    = new Date()
+  const limite = new Date()
+  limite.setDate(limite.getDate() + dias)
+  const hoyStr    = hoy.toISOString().split('T')[0]
+  const limiteStr = limite.toISOString().split('T')[0]
+
+  const porProducto = {}
+
+  // ── 1) Fecha de caducidad fija capturada en el producto ──────────
+  const { data: fijos, error: errFijos } = await supabase
+    .from('productos')
+    .select('id, nombre, categoria, unidad_venta, fecha_caducidad')
+    .eq('activo', true)
+    .not('fecha_caducidad', 'is', null)
+    .gte('fecha_caducidad', hoyStr)
+    .lte('fecha_caducidad', limiteStr)
+  if (errFijos) throw errFijos
+
+  for (const p of fijos || []) {
+    const expiry = new Date(`${p.fecha_caducidad}T12:00:00`)
+    porProducto[p.id] = {
+      ...p,
+      fecha_caducidad_estimada: p.fecha_caducidad,
+      dias_restantes: Math.max(0, Math.ceil((expiry - hoy) / (1000 * 60 * 60 * 24))),
+      es_estimado: false,
+    }
+  }
+
+  // ── 2) Estimación por días de vida desde la última compra ────────
   const { data, error } = await supabase
     .from('viajes_compra')
     .select(`
@@ -97,17 +126,11 @@ export async function getProductosProximosACaducar(dias = 7) {
 
   if (error) throw error
 
-  const hoy    = new Date()
-  const limite = new Date()
-  limite.setDate(limite.getDate() + dias)
-
-  // Tomar la recepción más reciente de cada producto y estimar caducidad
-  const porProducto = {}
   for (const viaje of data || []) {
     for (const item of viaje.items_viaje || []) {
       const p = item.productos
       if (!p?.dias_caducidad_estimado) continue
-      if (porProducto[item.producto_id]) continue // ya tenemos la más reciente
+      if (porProducto[item.producto_id]) continue // ya tenemos una fecha (fija o más reciente)
 
       const expiry = new Date(`${viaje.fecha}T12:00:00`)
       expiry.setDate(expiry.getDate() + p.dias_caducidad_estimado)
@@ -118,6 +141,7 @@ export async function getProductosProximosACaducar(dias = 7) {
           fecha_caducidad_estimada: expiry.toISOString().split('T')[0],
           dias_restantes: Math.ceil((expiry - hoy) / (1000 * 60 * 60 * 24)),
           ultimo_viaje:   viaje.fecha,
+          es_estimado: true,
         }
       }
     }

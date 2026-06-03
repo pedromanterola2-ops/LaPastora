@@ -40,12 +40,24 @@ export async function getProducto(id) {
 
 // ─── Crear ────────────────────────────────────────────────────
 
+/**
+ * Crea un producto. Si `payload.cantidad_inicial > 0`, la función RPC
+ * sube ese stock a la bodega central y registra el movimiento.
+ */
 export async function createProducto(payload) {
-  const { data, error } = await supabase
-    .from('productos')
-    .insert(payload)
-    .select()
-    .single()
+  const { data, error } = await supabase.rpc('fn_crear_producto', {
+    p_nombre:            payload.nombre,
+    p_categoria:         payload.categoria ?? null,
+    p_sku:               payload.sku ?? null,
+    p_unidad_venta:      payload.unidad_venta ?? 'pieza',
+    p_contenido:         payload.contenido ?? 1,
+    p_costo:             payload.costo ?? 0,
+    p_precio_venta:      payload.precio_venta ?? 0,
+    p_fecha_caducidad:   payload.fecha_caducidad || null,
+    p_existencia_minima: payload.existencia_minima ?? 0,
+    p_cantidad_inicial:  payload.cantidad_inicial ?? 0,
+    p_activo:            payload.activo ?? true,
+  })
   if (error) throw error
   return data
 }
@@ -66,31 +78,34 @@ export async function updateProducto(id, payload) {
 // ─── Importación masiva desde CSV ────────────────────────────
 
 /**
- * Inserta múltiples productos de una vez.
+ * Inserta múltiples productos de una vez vía RPC. Cada fila puede traer
+ * `cantidad_inicial`; la función sube ese stock a la bodega central.
  * @param {Array<object>} rows  Filas validadas con los campos del producto
- * @returns {Promise<number>}   Cantidad de filas insertadas
+ * @returns {Promise<number>}   Cantidad de productos creados
  */
 export async function importarProductosCSV(rows) {
   if (!rows?.length) throw new Error('No hay filas para importar')
 
   const payload = rows.map(r => ({
-    nombre:                  r.nombre.trim(),
-    categoria:               r.categoria?.trim() || null,
-    unidad_venta:            r.unidad_venta?.trim() || 'pieza',
-    precio_venta:            parseFloat(r.precio_venta) || 0,
-    existencia_minima:       parseFloat(r.existencia_minima) || 0,
-    dias_caducidad_estimado: r.dias_caducidad_estimado
-                               ? parseInt(r.dias_caducidad_estimado, 10) || null
-                               : null,
+    nombre:            r.nombre.trim(),
+    categoria:         r.categoria?.trim() || null,
+    sku:               r.sku?.trim() || null,
+    unidad_venta:      r.unidad_venta?.trim() || 'pieza',
+    contenido:         parseFloat(r.contenido) || 1,
+    costo:             parseFloat(r.costo) || 0,
+    precio_venta:      parseFloat(r.precio_venta) || 0,
+    fecha_caducidad:   r.fecha_caducidad?.trim() || null,
+    existencia_minima: parseFloat(r.existencia_minima) || 0,
+    cantidad_inicial:  parseFloat(r.cantidad_inicial) || 0,
     activo: true,
   }))
 
-  const { error, count } = await supabase
-    .from('productos')
-    .insert(payload, { count: 'exact' })
+  const { data, error } = await supabase.rpc('fn_importar_productos', {
+    p_rows: payload,
+  })
 
   if (error) throw error
-  return count ?? payload.length
+  return data ?? payload.length
 }
 
 // ─── Toggle activo ────────────────────────────────────────────

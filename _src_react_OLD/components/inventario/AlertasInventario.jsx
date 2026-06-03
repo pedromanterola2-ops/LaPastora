@@ -151,7 +151,7 @@ export default function AlertasInventario() {
           title={`${caducidad.length} producto${caducidad.length !== 1 ? 's' : ''} próximos a caducar`}
           colorClass={COLOR.amber}
           items={caducidad.map(p =>
-            `${p.nombre} — ${p.dias_restantes === 0 ? 'hoy' : `en ${p.dias_restantes} día${p.dias_restantes !== 1 ? 's' : ''}`} (est.)`
+            `${p.nombre} — ${p.dias_restantes === 0 ? 'hoy' : `en ${p.dias_restantes} día${p.dias_restantes !== 1 ? 's' : ''}`}${p.es_estimado ? ' (est.)' : ''}`
           )}
           total={caducidad.length}
           actionLabel="Ver inventario"

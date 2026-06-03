@@ -6,7 +6,7 @@ import {
   AlertTriangle, ToggleLeft, ToggleRight, Pencil,
   Upload, CheckCircle, AlertCircle, FileText,
 } from 'lucide-react'
-import { moneda } from '../lib/format'
+import { moneda, fechaCorta } from '../lib/format'
 import { getProductos, getCategorias, toggleActivo, importarProductosCSV } from '../lib/productos'
 
 // ─── Constantes ───────────────────────────────────────────────
@@ -34,8 +34,9 @@ function Spinner() {
 }
 
 // ─── Parser de CSV ─────────────────────────────────────────────
-const CSV_COLUMNS = ['nombre', 'categoria', 'unidad_venta', 'precio_venta', 'existencia_minima', 'dias_caducidad_estimado']
+const CSV_COLUMNS = ['sku', 'nombre', 'categoria', 'contenido', 'unidad_venta', 'costo', 'precio_venta', 'fecha_caducidad', 'existencia_minima', 'cantidad_inicial']
 const UNIDADES_VALIDAS = ['pieza', 'kg', 'gramo', 'litro', 'mililitro', 'caja', 'paquete', 'bolsa', 'docena', 'rollo']
+const FECHA_RE = /^\d{4}-\d{2}-\d{2}$/
 
 function parsearCSV(texto) {
   // Parsear campos respetando comillas
@@ -64,8 +65,11 @@ function parsearCSV(texto) {
 
   // Detectar si la primera fila es encabezado
   const primera = parseFila(lineas[0])
-  const esEncabezado = primera[0]?.toLowerCase().includes('nombre')
+  const esEncabezado = primera.some(c => /sku|nombre|precio/i.test(c || ''))
   const inicio = esEncabezado ? 1 : 0
+
+  // Detectar SKUs duplicados dentro del mismo archivo
+  const skusVistos = new Set()
 
   return lineas.slice(inicio).map((linea, idx) => {
     const campos = parseFila(linea)
@@ -75,12 +79,24 @@ function parsearCSV(texto) {
     if (!fila.nombre?.trim()) errores.push('Nombre requerido')
     if (!fila.precio_venta || isNaN(parseFloat(fila.precio_venta)) || parseFloat(fila.precio_venta) < 0)
       errores.push('Precio inválido')
+    if (fila.costo && (isNaN(parseFloat(fila.costo)) || parseFloat(fila.costo) < 0))
+      errores.push('Costo inválido')
+    if (fila.contenido && (isNaN(parseFloat(fila.contenido)) || parseFloat(fila.contenido) <= 0))
+      errores.push('Cantidad inválida')
+    if (fila.cantidad_inicial && (isNaN(parseFloat(fila.cantidad_inicial)) || parseFloat(fila.cantidad_inicial) < 0))
+      errores.push('Cantidad inicial inválida')
     if (fila.existencia_minima && isNaN(parseFloat(fila.existencia_minima)))
       errores.push('Existencia mínima inválida')
-    if (fila.dias_caducidad_estimado && isNaN(parseInt(fila.dias_caducidad_estimado, 10)))
-      errores.push('Días caducidad inválido')
+    if (fila.fecha_caducidad?.trim() && !FECHA_RE.test(fila.fecha_caducidad.trim()))
+      errores.push('Fecha debe ser AAAA-MM-DD')
     if (fila.unidad_venta && !UNIDADES_VALIDAS.includes(fila.unidad_venta.trim()))
       fila.unidad_venta = 'pieza' // normalizar a pieza si no reconocida
+
+    const skuNorm = fila.sku?.trim().toLowerCase()
+    if (skuNorm) {
+      if (skusVistos.has(skuNorm)) errores.push('SKU repetido en el archivo')
+      else skusVistos.add(skuNorm)
+    }
 
     return { ...fila, _fila: idx + inicio + 1, _errores: errores, _valida: errores.length === 0 }
   })
@@ -140,7 +156,7 @@ function ModalImportarCSV({ onClose, onSuccess }) {
           <div>
             <h2 className="font-semibold text-slate-800">Importar productos desde CSV</h2>
             <p className="text-xs text-slate-400 mt-0.5">
-              Columnas esperadas: nombre, categoría, unidad_venta, precio_venta, existencia_minima, dias_caducidad_estimado
+              Columnas: sku, nombre, categoria, contenido, unidad_venta, costo, precio_venta, fecha_caducidad, existencia_minima, cantidad_inicial
             </p>
           </div>
           <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors">
@@ -202,12 +218,13 @@ function ModalImportarCSV({ onClose, onSuccess }) {
                     <thead className="bg-slate-50 border-b border-slate-100 sticky top-0">
                       <tr>
                         <th className="px-3 py-2.5 text-left font-semibold text-slate-500 w-8">#</th>
+                        <th className="px-3 py-2.5 text-left font-semibold text-slate-500">SKU</th>
                         <th className="px-3 py-2.5 text-left font-semibold text-slate-500">Nombre</th>
                         <th className="px-3 py-2.5 text-left font-semibold text-slate-500">Categoría</th>
-                        <th className="px-3 py-2.5 text-left font-semibold text-slate-500">Unidad</th>
+                        <th className="px-3 py-2.5 text-left font-semibold text-slate-500">Present.</th>
+                        <th className="px-3 py-2.5 text-right font-semibold text-slate-500">Costo</th>
                         <th className="px-3 py-2.5 text-right font-semibold text-slate-500">Precio</th>
-                        <th className="px-3 py-2.5 text-right font-semibold text-slate-500">Mín.</th>
-                        <th className="px-3 py-2.5 text-right font-semibold text-slate-500">Cad.</th>
+                        <th className="px-3 py-2.5 text-right font-semibold text-slate-500">Inicial</th>
                         <th className="px-3 py-2.5 w-8" />
                       </tr>
                     </thead>
@@ -215,16 +232,17 @@ function ModalImportarCSV({ onClose, onSuccess }) {
                       {filas.map((fila, i) => (
                         <tr key={i} className={fila._valida ? 'hover:bg-slate-50/50' : 'bg-red-50/50'}>
                           <td className="px-3 py-2 text-slate-400">{fila._fila}</td>
+                          <td className="px-3 py-2 text-slate-500 font-mono text-[11px]">{fila.sku || <span className="text-slate-300">—</span>}</td>
                           <td className="px-3 py-2 font-medium text-slate-800 max-w-[140px] truncate">
                             {fila.nombre || <span className="text-red-400 italic">vacío</span>}
                           </td>
                           <td className="px-3 py-2 text-slate-500">{fila.categoria || <span className="text-slate-300">—</span>}</td>
-                          <td className="px-3 py-2 text-slate-500">{fila.unidad_venta || 'pieza'}</td>
+                          <td className="px-3 py-2 text-slate-500">{`${fila.contenido || '1'} ${fila.unidad_venta || 'pieza'}`}</td>
+                          <td className="px-3 py-2 text-right text-slate-500">{fila.costo || <span className="text-slate-300">—</span>}</td>
                           <td className="px-3 py-2 text-right text-slate-700 font-medium">
                             {fila.precio_venta || <span className="text-red-400">?</span>}
                           </td>
-                          <td className="px-3 py-2 text-right text-slate-500">{fila.existencia_minima || '0'}</td>
-                          <td className="px-3 py-2 text-right text-slate-500">{fila.dias_caducidad_estimado || '—'}</td>
+                          <td className="px-3 py-2 text-right text-slate-500">{fila.cantidad_inicial || '0'}</td>
                           <td className="px-3 py-2 text-center">
                             {fila._valida
                               ? <CheckCircle size={13} className="text-emerald-500 mx-auto" />
@@ -261,11 +279,14 @@ function ModalImportarCSV({ onClose, onSuccess }) {
               <details className="text-xs text-slate-400">
                 <summary className="cursor-pointer hover:text-slate-600 transition-colors">Ver formato esperado del CSV</summary>
                 <pre className="mt-2 p-3 bg-slate-50 rounded-lg border border-slate-100 text-slate-600 overflow-x-auto leading-relaxed">
-{`nombre,categoria,unidad_venta,precio_venta,existencia_minima,dias_caducidad_estimado
-Queso Oaxaca 400g,Lácteos,pieza,65,10,15
-Crema 500ml,Lácteos,litro,45,5,10
-Botana BBQ,Botanas,paquete,18,20,`}
+{`sku,nombre,categoria,contenido,unidad_venta,costo,precio_venta,fecha_caducidad,existencia_minima,cantidad_inicial
+QOX-01,Queso Oaxaca,Lácteos,1,kg,98,180,2026-07-15,10,20
+CRM-01,Crema,Lácteos,500,mililitro,28,45,,5,12
+BOT-01,Botana BBQ,Botanas,1,paquete,11,18,,20,0`}
                 </pre>
+                <p className="mt-2 text-slate-400">
+                  La <b>fecha</b> va en formato AAAA-MM-DD (puede ir vacía). La <b>cantidad_inicial</b> entra como stock en la bodega Central.
+                </p>
               </details>
             </div>
           )}
@@ -476,12 +497,17 @@ export default function Productos() {
                             <AlertTriangle size={13} className={sinStock ? 'text-red-500' : 'text-amber-500'} />
                           )}
                         </div>
-                        {p.dias_caducidad_estimado && (
-                          <p className="text-xs text-slate-400 mt-0.5">Cad. ~{p.dias_caducidad_estimado}d</p>
-                        )}
+                        <p className="text-xs text-slate-400 mt-0.5 flex gap-2">
+                          {p.sku && <span className="font-mono">{p.sku}</span>}
+                          {p.fecha_caducidad
+                            ? <span>Cad. {fechaCorta(p.fecha_caducidad)}</span>
+                            : p.dias_caducidad_estimado
+                              ? <span>Cad. ~{p.dias_caducidad_estimado}d</span>
+                              : null}
+                        </p>
                       </td>
                       <td className="px-4 py-3 text-slate-500">{p.categoria || <span className="text-slate-300">—</span>}</td>
-                      <td className="px-4 py-3 text-slate-500">{p.unidad_venta}</td>
+                      <td className="px-4 py-3 text-slate-500">{p.contenido && Number(p.contenido) !== 1 ? `${p.contenido} ` : ''}{p.unidad_venta}</td>
                       <td className="px-4 py-3 text-right font-semibold text-slate-800">{moneda(p.precio_venta)}</td>
                       <td className="px-4 py-3 text-center">
                         <StockBadge val={stockCentral} minimo={null} />
@@ -551,7 +577,7 @@ export default function Productos() {
                         )}
                       </div>
                       <p className="text-xs text-slate-400 mt-0.5">
-                        {[p.categoria, p.unidad_venta].filter(Boolean).join(' · ')}
+                        {[p.sku, p.categoria, `${p.contenido && Number(p.contenido) !== 1 ? p.contenido + ' ' : ''}${p.unidad_venta}`].filter(Boolean).join(' · ')}
                       </p>
                     </div>
                     <p className="font-bold text-slate-900 shrink-0">{moneda(p.precio_venta)}</p>

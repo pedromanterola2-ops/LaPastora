@@ -356,7 +356,7 @@ canvas{max-width:100%}
     <div class="panel">
       <div class="section-head"><h3>Inventario por producto</h3><div class="flex-gap" id="inv-store-filter"></div></div>
       <div class="table-wrap">
-        <table><thead><tr><th>Producto</th><th>Unidad</th><th>Stock</th><th>Mín.</th><th>P. Normal</th><th>P. Mayoreo</th><th>Costo</th><th>Vence</th><th>Estado</th></tr></thead>
+        <table><thead id="inv-thead"><tr><th>Producto</th><th>Unidad</th><th>Stock</th><th>Mín.</th><th>P. Normal</th><th>P. Mayoreo</th><th>Costo</th><th>Vence</th><th>Estado</th></tr></thead>
         <tbody id="inv-table"></tbody></table>
       </div>
     </div>
@@ -436,7 +436,7 @@ canvas{max-width:100%}
         <h3 style="margin-bottom:14px">Registrar ingreso de mercancía</h3>
         <div class="form-grid">
           <div class="form-group"><label>Destino</label><select id="comp-tienda"><option value="central">🏢 Almacén Central</option><option value="s1">Tienda Centro</option><option value="s2">Tienda Norte</option></select></div>
-          <div class="form-group"><label>Proveedor</label><select id="comp-proveedor"><option>Rancho El Roble</option><option>Granja Santa Ana</option><option>Lechería Morales</option></select></div>
+          <div class="form-group"><label>Proveedor</label><select id="comp-proveedor"></select></div>
           <div class="form-group"><label>Producto</label>
             <div style="display:flex;gap:6px">
               <select id="comp-producto" onchange="updateCompraUnidad()" style="flex:1"></select>
@@ -535,9 +535,20 @@ canvas{max-width:100%}
 
 <!-- ══════════════════════ PROVEEDORES (admin) ══════════════════════ -->
 <div id="page-proveedores" class="page">
+  <div class="grid g4 mb18" id="prov-kpis"></div>
   <div class="panel">
-    <div class="section-head"><h3>Proveedores</h3><button class="primary-button" onclick="abrirModalProveedor()">+ Nuevo</button></div>
-    <div class="table-wrap"><table><thead><tr><th>Nombre</th><th>Tipo</th><th>Teléfono</th><th>Producto principal</th><th>Estado</th></tr></thead>
+    <div class="section-head">
+      <div class="flex-gap">
+        <input type="text" placeholder="Buscar proveedor..." style="width:200px;min-height:30px;padding:4px 9px" oninput="filterProveedores(this.value)">
+        <select id="prov-filtro-estado" onchange="renderProveedores()" style="min-height:30px;padding:4px 9px">
+          <option value="all">Todos</option>
+          <option value="activos">Activos</option>
+          <option value="inactivos">Inactivos</option>
+        </select>
+      </div>
+      <button class="primary-button" onclick="abrirModalProveedor(null)">+ Nuevo proveedor</button>
+    </div>
+    <div class="table-wrap"><table><thead><tr><th>Nombre</th><th>Tipo</th><th>Contacto</th><th>Producto principal</th><th>Ciudad</th><th>Compras</th><th>Total comprado</th><th>Estado</th><th></th></tr></thead>
     <tbody id="prov-table"></tbody></table></div>
   </div>
 </div>
@@ -626,6 +637,36 @@ canvas{max-width:100%}
   </div>
 </div>
 
+<!-- ══ MODAL PROVEEDOR ══ -->
+<div class="modal-overlay" id="modal-proveedor">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-prov-title">Nuevo proveedor</span>
+      <button class="modal-close" onclick="cerrarModal('modal-proveedor')">✕</button>
+    </div>
+    <input type="hidden" id="prov-edit-id">
+    <div class="form-grid">
+      <div class="form-group"><label>Nombre</label><input type="text" id="prov-nombre" placeholder="Rancho El Roble"></div>
+      <div class="form-group"><label>Tipo</label>
+        <select id="prov-tipo"><option value="Distribuidor">Distribuidor</option><option value="Productor">Productor</option><option value="Mayorista">Mayorista</option><option value="Otro">Otro</option></select>
+      </div>
+      <div class="form-group"><label>Persona de contacto</label><input type="text" id="prov-contacto" placeholder="Nombre del contacto"></div>
+      <div class="form-group"><label>Teléfono</label><input type="tel" id="prov-tel" placeholder="555-1234" inputmode="tel"></div>
+      <div class="form-group"><label>Producto principal</label><input type="text" id="prov-prod" placeholder="Queso Oaxaca"></div>
+      <div class="form-group"><label>Ciudad</label><input type="text" id="prov-ciudad" placeholder="Querétaro"></div>
+    </div>
+    <div class="form-group" style="margin-top:12px"><label>Notas</label><textarea id="prov-notas" placeholder="Días de entrega, condiciones de pago, etc." rows="2" style="width:100%;resize:vertical;padding:8px 10px;border-radius:var(--radius);border:1px solid var(--line-strong);font-family:inherit;font-size:13px"></textarea></div>
+    <label style="display:flex;align-items:center;gap:9px;margin-top:14px;font-size:13px;cursor:pointer">
+      <input type="checkbox" id="prov-activo" checked style="width:16px;height:16px;cursor:pointer">
+      <span>Proveedor activo</span>
+    </label>
+    <div class="modal-footer">
+      <button class="ghost-button" onclick="cerrarModal('modal-proveedor')">Cancelar</button>
+      <button class="primary-button" onclick="saveProveedor()">Guardar</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══ MODAL CIERRE DE CAJA ══ -->
 <div class="modal-overlay" id="modal-cierre">
   <div class="modal modal-lg">
@@ -685,9 +726,10 @@ let traslados = [];
 let movimientos = [];
 let cajaLog = []; // closed cajas history
 let cajaActiva = { s1:null, s2:null }; // {storeId: {abierta:timestamp, userId, snapInv}}
+let proveedores = []; // {id,name,tipo,tel,contacto,prod,ciudad,notas,activo,creado}
 
 function saveData(){
-  const d={products,categories,inventory,sales,purchases,mermaList,traslados,movimientos,cajaLog,cajaActiva};
+  const d={products,categories,inventory,sales,purchases,mermaList,traslados,movimientos,cajaLog,cajaActiva,proveedores};
   try{localStorage.setItem('lp_data',JSON.stringify(d));}catch(e){}
   if(!applyingRemote) schedulePush();   // ← sincroniza con la nube (otras tiendas)
 }
@@ -707,13 +749,14 @@ function loadData(){
     movimientos=d.movimientos||[];
     cajaLog=d.cajaLog||[];
     cajaActiva=d.cajaActiva||{s1:null,s2:null};
+    proveedores=d.proveedores||[];
     // no fallback to demo data — keep whatever was saved (even empty)
   }catch(e){initEmpty();}
 }
 function initEmpty(){
   products=[]; categories=['Quesos frescos','Quesos maduros','Cremas','Otros derivados'];
   inventory={central:{},s1:{},s2:{}}; sales=[]; purchases=[]; mermaList=[]; traslados=[];
-  movimientos=[]; cajaLog=[]; cajaActiva={s1:null,s2:null};
+  movimientos=[]; cajaLog=[]; cajaActiva={s1:null,s2:null}; proveedores=[];
   saveData();
 }
 function initDemoData(){
@@ -774,6 +817,11 @@ function initDemoData(){
   cajaActiva={s1:null,s2:null};
   cajaLog=[];
   traslados=[];
+  proveedores=[
+    {id:'pv1',name:'Rancho El Roble',tipo:'Distribuidor',tel:'555-1234',contacto:'José Robles',prod:'Queso Oaxaca',ciudad:'Querétaro',notas:'Entrega los martes',activo:true,creado:d(-60)},
+    {id:'pv2',name:'Granja Santa Ana',tipo:'Productor',tel:'555-5678',contacto:'Ana Pérez',prod:'Queso Panela',ciudad:'San Juan del Río',notas:'',activo:true,creado:d(-45)},
+    {id:'pv3',name:'Lechería Morales',tipo:'Productor',tel:'555-9012',contacto:'Luis Morales',prod:'Requesón',ciudad:'Tequisquiapan',notas:'Pago de contado',activo:true,creado:d(-30)},
+  ];
   saveData();
 }
 
@@ -1365,17 +1413,47 @@ function renderInventario(){
   renderMovTable(sid);
   renderAjusteProductos();
 }
+function invQtyCell(qty,p,checkLow){
+  let color='var(--ink)';
+  if(checkLow){ if(qty<=0) color='var(--danger)'; else if(qty<p.minStock) color='var(--warn)'; }
+  return `<td style="font-weight:700;color:${color}">${fmtQty(qty,p.unit)}</td>`;
+}
 function renderInvTable(sid){
+  const thead=$('inv-thead');
+  // ── Vista "Todas las tiendas": desglose por ubicación ──
+  if(!sid){
+    if(thead) thead.innerHTML=`<tr><th>Producto</th><th>Unidad</th>`+
+      `<th><span class="chip central">Central</span></th>`+
+      `<th><span class="chip s1">Centro</span></th>`+
+      `<th><span class="chip s2">Norte</span></th>`+
+      `<th>Total</th><th>Mín.</th><th>Estado</th></tr>`;
+    $('inv-table').innerHTML=products.map(p=>{
+      const c=getStoreInv('central',p.id).qty||0;
+      const a=getStoreInv('s1',p.id).qty||0;
+      const b=getStoreInv('s2',p.id).qty||0;
+      const total=c+a+b;
+      const low=(a<p.minStock||b<p.minStock);
+      const statusCls=total<=0?'danger':low?'warn':'ok';
+      const statusTxt=total<=0?'Sin stock':low?'Stock bajo':'OK';
+      return `<tr>
+        <td><strong>${p.name}</strong><div style="font-size:11px;color:var(--muted)">${p.sku}</div></td>
+        <td><span class="chip">${p.unit}</span></td>
+        ${invQtyCell(c,p,false)}
+        ${invQtyCell(a,p,true)}
+        ${invQtyCell(b,p,true)}
+        <td style="font-weight:800">${fmtQty(total,p.unit)}</td>
+        <td style="color:var(--muted)">${fmtQty(p.minStock,p.unit)}</td>
+        <td><span class="status ${statusCls}">${statusTxt}</span></td>
+      </tr>`;
+    }).join('');
+    return;
+  }
+  // ── Vista de una sola ubicación: detalle completo ──
+  if(thead) thead.innerHTML=`<tr><th>Producto</th><th>Unidad</th><th>Stock</th><th>Mín.</th><th>P. Normal</th><th>P. Mayoreo</th><th>Costo</th><th>Vence</th><th>Estado</th></tr>`;
   const rows=products.map(p=>{
-    let qty,expiry;
-    if(sid){
-      const inv=getStoreInv(sid,p.id);
-      qty=inv.qty||0;
-      expiry=inv.lots?.reduce((a,l)=>!a||l.expiry<a?l.expiry:a,'');
-    } else {
-      qty=getTotalInv(p.id);
-      expiry='';
-    }
+    const inv=getStoreInv(sid,p.id);
+    const qty=inv.qty||0;
+    const expiry=inv.lots?.reduce((a,l)=>!a||l.expiry<a?l.expiry:a,'');
     const d=daysUntil(expiry);
     const statusCls=qty<=0?'danger':qty<p.minStock?'warn':'ok';
     const statusTxt=qty<=0?'Sin stock':qty<p.minStock?'Stock bajo':'OK';
@@ -1599,6 +1677,13 @@ function renderMermaCharts(sid){
 function renderCompras(){
   const sel=$('comp-producto');
   if(sel) sel.innerHTML=products.map(p=>`<option value="${p.id}">${p.name} (${p.unit})</option>`).join('');
+  const provSel=$('comp-proveedor');
+  if(provSel){
+    const activos=proveedores.filter(p=>p.activo).sort((a,b)=>a.name.localeCompare(b.name));
+    provSel.innerHTML=activos.length
+      ? activos.map(p=>`<option value="${p.name}">${p.name}</option>`).join('')
+      : `<option value="">— Sin proveedores (agrégalos en la sección Proveedores) —</option>`;
+  }
   const fd=$('comp-fecha'); if(fd) fd.value=today();
   renderComprasRecientes();
   renderComprasTable();
@@ -1625,6 +1710,7 @@ function registrarCompra(){
   const vence=$('comp-vencimiento').value;
   const factura=$('comp-factura')?.value||'';
   const proveedor=$('comp-proveedor').value;
+  if(!proveedor){showToast('Agrega un proveedor en la sección Proveedores primero','warn');return;}
   const compId='C'+uid();
   purchases.push({id:compId,storeId,proveedor,productId,qty,unitCost,total,fecha:today(),vence,factura});
   // update inventory
@@ -1976,21 +2062,127 @@ function eliminarProducto(id){
 // ═══════════════════════════════════════════════
 //  PROVEEDORES
 // ═══════════════════════════════════════════════
-const DEMO_PROVEEDORES=[
-  {id:'pv1',name:'Rancho El Roble',tipo:'Distribuidor',tel:'555-1234',prod:'Queso Oaxaca',activo:true},
-  {id:'pv2',name:'Granja Santa Ana',tipo:'Productor',tel:'555-5678',prod:'Queso Panela',activo:true},
-  {id:'pv3',name:'Lechería Morales',tipo:'Productor',tel:'555-9012',prod:'Requesón',activo:true},
-];
-function renderProveedores(){
-  $('prov-table').innerHTML=DEMO_PROVEEDORES.map(p=>`<tr>
-    <td><strong>${p.name}</strong></td>
-    <td>${p.tipo}</td>
-    <td>${p.tel}</td>
-    <td>${p.prod}</td>
-    <td><span class="status ${p.activo?'ok':'muted'}">${p.activo?'Activo':'Inactivo'}</span></td>
-  </tr>`).join('');
+let _provFilter='';
+// Estadísticas de compras por proveedor (se empata por nombre, que es como se guardan las compras)
+function statsProveedor(name){
+  const list=purchases.filter(c=>c.proveedor===name);
+  return { count:list.length, total:list.reduce((s,c)=>s+(c.total||0),0) };
 }
-function abrirModalProveedor(){ showToast('Formulario de proveedor — próximamente'); }
+function getProveedor(id){return proveedores.find(p=>p.id===id);}
+function filterProveedores(val){ _provFilter=(val||'').toLowerCase(); renderProveedores(); }
+function renderProveedores(){
+  const estado=$('prov-filtro-estado')?.value||'all';
+  let list=[...proveedores].sort((a,b)=>a.name.localeCompare(b.name));
+  if(estado==='activos') list=list.filter(p=>p.activo);
+  else if(estado==='inactivos') list=list.filter(p=>!p.activo);
+  if(_provFilter) list=list.filter(p=>(p.name||'').toLowerCase().includes(_provFilter)||(p.prod||'').toLowerCase().includes(_provFilter)||(p.ciudad||'').toLowerCase().includes(_provFilter)||(p.contacto||'').toLowerCase().includes(_provFilter));
+  // KPIs
+  const kpis=$('prov-kpis');
+  if(kpis){
+    const totalActivos=proveedores.filter(p=>p.activo).length;
+    const gastoTotal=purchases.reduce((s,c)=>s+(c.total||0),0);
+    kpis.innerHTML=`
+      <div class="metric"><div><div class="eyebrow">Proveedores</div><div class="metric-value">${proveedores.length}</div></div></div>
+      <div class="metric"><div><div class="eyebrow">Activos</div><div class="metric-value">${totalActivos}</div></div></div>
+      <div class="metric"><div><div class="eyebrow">Inactivos</div><div class="metric-value">${proveedores.length-totalActivos}</div></div></div>
+      <div class="metric"><div><div class="eyebrow">Compras acumuladas</div><div class="metric-value text-copper">${fmt(gastoTotal)}</div></div></div>`;
+  }
+  $('prov-table').innerHTML=list.map(p=>{
+    const st=statsProveedor(p.name);
+    return `<tr>
+    <td><strong>${p.name}</strong></td>
+    <td><span class="chip">${p.tipo||'—'}</span></td>
+    <td>${p.contacto?`${p.contacto}${p.tel?`<div style="font-size:11px;color:var(--muted)">${p.tel}</div>`:''}`:(p.tel||'—')}</td>
+    <td>${p.prod||'—'}</td>
+    <td>${p.ciudad||'—'}</td>
+    <td>${st.count}</td>
+    <td class="text-copper">${st.total>0?fmt(st.total):'—'}</td>
+    <td><span class="status ${p.activo?'ok':'muted'}">${p.activo?'Activo':'Inactivo'}</span></td>
+    <td style="display:flex;gap:5px;flex-wrap:nowrap">
+      <button class="tiny-button" onclick="abrirModalProveedor('${p.id}')">Editar</button>
+      <button class="tiny-button" onclick="toggleProveedor('${p.id}')">${p.activo?'Desactivar':'Activar'}</button>
+      <button class="tiny-button" onclick="confirmarEliminarProveedor('${p.id}')" style="border-color:rgba(168,61,52,.35);color:var(--danger)">Eliminar</button>
+    </td>
+  </tr>`;}).join('')||`<tr><td colspan="9" style="text-align:center;padding:32px">
+    <div style="color:var(--muted);font-size:13px">
+      <div style="font-size:32px;margin-bottom:8px">🚛</div>
+      ${proveedores.length?'Ningún proveedor coincide con el filtro.':`No hay proveedores aún. <button onclick="abrirModalProveedor(null)" class="tiny-button" style="margin-left:6px">+ Agregar primer proveedor</button>`}
+    </div>
+  </td></tr>`;
+}
+function abrirModalProveedor(id){
+  const p=id?getProveedor(id):null;
+  $('modal-prov-title').textContent=p?'Editar proveedor':'Nuevo proveedor';
+  $('prov-edit-id').value=p?.id||'';
+  $('prov-nombre').value=p?.name||'';
+  $('prov-tipo').value=p?.tipo||'Distribuidor';
+  $('prov-contacto').value=p?.contacto||'';
+  $('prov-tel').value=p?.tel||'';
+  $('prov-prod').value=p?.prod||'';
+  $('prov-ciudad').value=p?.ciudad||'';
+  $('prov-notas').value=p?.notas||'';
+  $('prov-activo').checked=p?!!p.activo:true;
+  $('modal-proveedor').classList.add('is-open');
+}
+function saveProveedor(){
+  const id=$('prov-edit-id').value;
+  const name=$('prov-nombre').value.trim();
+  if(!name){showToast('El nombre es obligatorio','warn');return;}
+  const data={
+    name,
+    tipo:$('prov-tipo').value,
+    contacto:$('prov-contacto').value.trim(),
+    tel:$('prov-tel').value.trim(),
+    prod:$('prov-prod').value.trim(),
+    ciudad:$('prov-ciudad').value.trim(),
+    notas:$('prov-notas').value.trim(),
+    activo:$('prov-activo').checked,
+  };
+  if(id){
+    const idx=proveedores.findIndex(p=>p.id===id);
+    if(idx>=0) proveedores[idx]={...proveedores[idx],...data};
+  } else {
+    proveedores.push({id:'pv'+uid(),...data,creado:today()});
+  }
+  saveData(); cerrarModal('modal-proveedor');
+  showToast(id?'Proveedor actualizado':'Proveedor creado');
+  renderProveedores();
+}
+function toggleProveedor(id){
+  const p=getProveedor(id); if(!p) return;
+  p.activo=!p.activo;
+  saveData();
+  showToast(p.activo?`"${p.name}" activado`:`"${p.name}" desactivado`);
+  renderProveedores();
+}
+function confirmarEliminarProveedor(id){
+  const p=getProveedor(id); if(!p) return;
+  const st=statsProveedor(p.name);
+  const overlay=document.createElement('div');
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(43,33,26,.45);backdrop-filter:blur(4px);z-index:9999;display:flex;align-items:center;justify-content:center';
+  const compraWarn=st.count>0?`<div style="margin:12px 0;padding:10px 12px;background:rgba(179,107,33,.1);border:1px solid rgba(179,107,33,.3);border-radius:8px;font-size:12px;color:var(--warn)">⚠️ Este proveedor tiene <strong>${st.count} compra(s)</strong> registradas. El historial de compras se conserva, pero ya no podrás seleccionarlo en compras nuevas. Si prefieres conservarlo, usa <strong>Desactivar</strong>.</div>`:'';
+  overlay.innerHTML=`<div style="background:#fffaf1;border-radius:14px;border:1px solid rgba(62,45,31,.14);padding:28px;width:380px;max-width:94vw;box-shadow:0 24px 60px rgba(70,48,24,.14);font-family:inherit">
+    <div style="font-size:36px;margin-bottom:10px;text-align:center">🗑️</div>
+    <h3 style="font-size:16px;font-weight:800;margin-bottom:6px;text-align:center;color:#2b211a">Eliminar proveedor</h3>
+    <p style="font-size:13px;color:#75695d;text-align:center;margin-bottom:4px">¿Eliminar <strong>${p.name}</strong>?</p>
+    ${compraWarn}
+    <p style="font-size:12px;color:#a83d34;text-align:center;margin-bottom:18px">Esta acción no se puede deshacer.</p>
+    <div style="display:grid;gap:8px">
+      <button id="delp-confirm" style="width:100%;padding:11px;border-radius:8px;border:1px solid rgba(168,61,52,.4);background:rgba(168,61,52,.1);color:#a83d34;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Sí, eliminar proveedor</button>
+      <button id="delp-cancel"  style="width:100%;padding:9px;border-radius:8px;border:1px solid rgba(62,45,31,.2);background:#fffdf7;color:#75695d;font-size:13px;cursor:pointer;font-family:inherit">Cancelar</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelector('#delp-confirm').onclick=()=>{
+    proveedores=proveedores.filter(pr=>pr.id!==id);
+    saveData();
+    showToast(`Proveedor "${p.name}" eliminado`);
+    renderProveedores();
+    overlay.remove();
+  };
+  overlay.querySelector('#delp-cancel').onclick=()=>overlay.remove();
+  overlay.addEventListener('click',e=>{if(e.target===overlay)overlay.remove();});
+}
 
 // ═══════════════════════════════════════════════
 //  REPORTES
@@ -2200,7 +2392,7 @@ let pushPending = false;
 
 // Reúne todo el estado en un solo objeto (mismo formato que localStorage)
 function collectData(){
-  return {products,categories,inventory,sales,purchases,mermaList,traslados,movimientos,cajaLog,cajaActiva};
+  return {products,categories,inventory,sales,purchases,mermaList,traslados,movimientos,cajaLog,cajaActiva,proveedores};
 }
 // Vuelca un objeto de datos a las variables globales (reusado por carga local, nube y realtime)
 function applyData(d){
@@ -2216,6 +2408,7 @@ function applyData(d){
   movimientos = d.movimientos || [];
   cajaLog     = d.cajaLog     || [];
   cajaActiva  = d.cajaActiva  || {s1:null,s2:null};
+  proveedores = d.proveedores || [];
 }
 
 // ── Indicador de estado de conexión (pastilla fija, no intrusiva) ──
