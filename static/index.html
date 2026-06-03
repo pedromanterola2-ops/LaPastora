@@ -365,7 +365,7 @@ canvas{max-width:100%}
     <div class="panel">
       <div class="section-head"><h3>Historial de movimientos</h3></div>
       <div class="table-wrap">
-        <table><thead><tr><th>Fecha</th><th>Tipo</th><th>Producto</th><th>Cant.</th><th>Motivo</th><th>Tienda</th><th>Usuario</th></tr></thead>
+        <table><thead><tr><th>Fecha</th><th>Tipo</th><th>Producto</th><th>Cant.</th><th>Motivo</th><th>Origen → Destino</th><th>Usuario</th></tr></thead>
         <tbody id="mov-table"></tbody></table>
       </div>
     </div>
@@ -588,24 +588,30 @@ canvas{max-width:100%}
       <span class="modal-title" id="modal-prod-title">Nuevo producto</span>
       <button class="modal-close" onclick="cerrarModal('modal-producto')">✕</button>
     </div>
+    <input type="hidden" id="prod-edit-id">
     <div class="form-grid">
-      <input type="hidden" id="prod-edit-id">
-      <div class="form-group"><label>SKU</label><input type="text" id="prod-sku" placeholder="QOX-01"></div>
       <div class="form-group"><label>Nombre</label><input type="text" id="prod-nombre" placeholder="Queso Oaxaca"></div>
-      <div class="form-group"><label>Categoría <small style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--muted)">— escribe una nueva o elige existente</small></label>
-        <input type="text" id="prod-cat" list="cat-datalist" placeholder="Ej: Quesos frescos">
-        <datalist id="cat-datalist"></datalist>
+      <div class="form-group"><label>Categoría</label>
+        <select id="prod-cat" onchange="onCatSelectChange()"></select>
+        <input type="text" id="prod-cat-nueva" placeholder="Nombre de la nueva categoría" style="display:none;margin-top:6px">
       </div>
       <div class="form-group"><label>Unidad</label>
         <select id="prod-unidad"><option value="kg">Kilogramos (kg)</option><option value="litros">Litros</option><option value="piezas">Piezas</option><option value="gramos">Gramos (g)</option><option value="ml">Mililitros (ml)</option><option value="paquetes">Paquetes</option></select>
       </div>
-      <div class="form-group"><label>Precio normal</label><input type="number" id="prod-precio" placeholder="0.00" step="0.01"></div>
-      <div class="form-group"><label>Precio mayoreo</label><input type="number" id="prod-precio-mayoreo" placeholder="0.00" step="0.01"></div>
-      <div class="form-group"><label>Mínimo para mayoreo</label><input type="number" id="prod-min-mayoreo" placeholder="5" step="0.01"></div>
-      <div class="form-group"><label>Costo promedio</label><input type="number" id="prod-costo" placeholder="0.00" step="0.01"></div>
-      <div class="form-group"><label>Stock mínimo</label><input type="number" id="prod-min-stock" placeholder="5" step="0.01"></div>
-      <div class="form-group"><label>Días de vida útil</label><input type="number" id="prod-vida" placeholder="15"></div>
+      <div class="form-group"><label>Costo del producto</label><input type="number" id="prod-costo" placeholder="0.00" step="0.01" oninput="calcMargen()"></div>
+      <div class="form-group"><label>Precio de venta</label><input type="number" id="prod-precio" placeholder="0.00" step="0.01" oninput="calcMargen()"></div>
     </div>
+    <div id="prod-margen" style="display:none;margin-top:10px;padding:9px 12px;border-radius:var(--radius);font-size:13px;font-weight:700"></div>
+    <details id="prod-advanced" style="margin-top:12px;border:1px solid var(--line);border-radius:var(--radius);padding:0 12px">
+      <summary style="cursor:pointer;padding:11px 0;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);list-style:none">⚙️ Más opciones (mayoreo, costo, SKU…)</summary>
+      <div class="form-grid" style="padding-bottom:12px">
+        <div class="form-group"><label>SKU <small style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--muted)">— opcional</small></label><input type="text" id="prod-sku" placeholder="QOX-01"></div>
+        <div class="form-group"><label>Precio mayoreo</label><input type="number" id="prod-precio-mayoreo" placeholder="0.00" step="0.01"></div>
+        <div class="form-group"><label>Mínimo para mayoreo</label><input type="number" id="prod-min-mayoreo" placeholder="5" step="0.01"></div>
+        <div class="form-group"><label>Stock mínimo</label><input type="number" id="prod-min-stock" placeholder="5" step="0.01"></div>
+        <div class="form-group"><label>Días de vida útil</label><input type="number" id="prod-vida" placeholder="15"></div>
+      </div>
+    </details>
     <div id="prod-initial-stock-row" style="display:none;margin-top:10px;padding:12px;background:rgba(99,118,91,.06);border:1px solid rgba(99,118,91,.2);border-radius:var(--radius)">
       <p style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--sage);margin-bottom:8px">📦 Stock inicial (opcional)</p>
       <div class="form-grid">
@@ -783,7 +789,7 @@ function nowTime(){return new Date().toLocaleTimeString('es-MX',{hour:'2-digit',
 function nowISO(){return new Date().toISOString()}
 function formatFecha(iso){if(!iso)return'—';const d=new Date(iso);return d.toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'})}
 function formatHora(iso){if(!iso)return'—';return new Date(iso).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'})}
-function daysUntil(dateStr){if(!dateStr)return999;const diff=new Date(dateStr)-new Date(today());return Math.round(diff/86400000)}
+function daysUntil(dateStr){if(!dateStr)return 999;const diff=new Date(dateStr)-new Date(today());return Math.round(diff/86400000)}
 function getProduct(id){return products.find(p=>p.id===id)}
 function getStoreInv(storeId,productId){return inventory[storeId]?.[productId]||{qty:0,lots:[]}}
 function getTotalInv(productId){return (getStoreInv('central',productId).qty||0)+(getStoreInv('s1',productId).qty||0)+(getStoreInv('s2',productId).qty||0)}
@@ -1347,10 +1353,12 @@ function renderInventario(){
   const sid=activeStoreId();
   const filt=$('inv-store-filter');
   if(isAdmin()){
+    const cur=sid||'';
     filt.innerHTML=`<select onchange="renderInvTable(this.value)" id="inv-store-sel" style="min-height:30px;padding:3px 8px;width:auto">
-      <option value="">Ambas tiendas</option>
-      <option value="s1">Centro</option>
-      <option value="s2">Norte</option>
+      <option value=""${cur===''?' selected':''}>Todas las tiendas</option>
+      <option value="central"${cur==='central'?' selected':''}>🏢 Central</option>
+      <option value="s1"${cur==='s1'?' selected':''}>Centro</option>
+      <option value="s2"${cur==='s2'?' selected':''}>Norte</option>
     </select>`;
   } else { filt.innerHTML=''; }
   renderInvTable(sid||'');
@@ -1387,17 +1395,42 @@ function renderInvTable(sid){
 }
 function renderMovTable(sid){
   const t=$('mov-table'); if(!t) return;
-  const movs=[...movimientos].filter(m=>!sid||m.storeId===sid).sort((a,b)=>new Date(b.fecha)-new Date(a.fecha)).slice(0,30);
-  t.innerHTML=movs.map(m=>{
+  const trasById={}; traslados.forEach(tr=>{trasById[tr.id]=tr;});
+  const arrow='<span style="color:var(--muted);margin:0 4px">→</span>';
+  const all=[...movimientos].filter(m=>!sid||m.storeId===sid).sort((a,b)=>new Date(b.fecha)-new Date(a.fecha));
+  const seenTras={};
+  const rows=[];
+  for(const m of all){
+    // colapsar el par de movimientos de un traslado (Salida origen + Entrada destino) en una sola fila
+    if(m.motivo==='Traslado'&&m.ref&&trasById[m.ref]){
+      if(seenTras[m.ref]) continue;
+      seenTras[m.ref]=true;
+    }
+    rows.push(m);
+    if(rows.length>=30) break;
+  }
+  t.innerHTML=rows.map(m=>{
     const p=getProduct(m.productId);
+    const user=DEMO_USERS.find(u=>u.id===m.userId)?.name||m.userId;
+    let tipoCell, flowCell;
+    if(m.motivo==='Traslado'&&trasById[m.ref]){
+      const tr=trasById[m.ref];
+      tipoCell=`<span class="status muted">Traslado</span>`;
+      flowCell=`<span class="chip ${tr.origen}">${storeShort(tr.origen)}</span>${arrow}<span class="chip ${tr.destino}">${storeShort(tr.destino)}</span>`;
+    } else {
+      tipoCell=`<span class="status ${m.tipo==='Entrada'?'ok':'muted'}">${m.tipo}</span>`;
+      flowCell = m.tipo==='Entrada'
+        ? `${arrow}<span class="chip ${m.storeId}">${storeShort(m.storeId)}</span>`
+        : `<span class="chip ${m.storeId}">${storeShort(m.storeId)}</span>${arrow}`;
+    }
     return `<tr>
       <td style="font-size:12px">${formatFecha(m.fecha)}</td>
-      <td><span class="status ${m.tipo==='Entrada'?'ok':'muted'}">${m.tipo}</span></td>
+      <td>${tipoCell}</td>
       <td>${p?.name||m.productId}</td>
       <td>${m.qty} ${p?.unit||''}</td>
       <td>${m.motivo}</td>
-      <td><span class="chip ${m.storeId}">${storeShort(m.storeId)}</span></td>
-      <td>${DEMO_USERS.find(u=>u.id===m.userId)?.name||m.userId}</td>
+      <td style="white-space:nowrap">${flowCell}</td>
+      <td>${user}</td>
     </tr>`;
   }).join('')||'<tr><td colspan="7" class="text-muted" style="text-align:center;padding:20px">Sin movimientos</td></tr>';
 }
@@ -1412,9 +1445,9 @@ function renderAjusteProductos(){
     return;
   }
   const adminUser=isAdmin();
-  const sid=activeStoreId()||'s1';
+  const sid=activeStoreId()||'central';
   const storeOpts=adminUser
-    ? `<div class="form-group"><label>Tienda</label><select id="aj-tienda"><option value="s1">Tienda Centro</option><option value="s2">Tienda Norte</option></select></div>`
+    ? `<div class="form-group"><label>Ubicación</label><select id="aj-tienda"><option value="central"${sid==='central'?' selected':''}>🏢 Almacén Central</option><option value="s1"${sid==='s1'?' selected':''}>Tienda Centro</option><option value="s2"${sid==='s2'?' selected':''}>Tienda Norte</option></select></div>`
     : '';
   wrap.innerHTML=`<div class="form-card" style="max-width:460px">
     <h3 style="margin-bottom:14px">Ajuste manual de inventario</h3>
@@ -1469,8 +1502,11 @@ function registrarAjuste(){
   saveData();
   showToast(`✅ Ajuste registrado en ${storeName(sid)}`);
   $('aj-qty').value=''; if($('aj-notas')) $('aj-notas').value='';
-  renderMovTable(sid);
-  renderInvTable(tiendaSel?tiendaSel.value:(activeStoreId()||''));
+  // Re-pintar ambas tablas con la vista actual para que el stock y los
+  // movimientos queden siempre sincronizados con lo que se está mirando.
+  const viewSid=isAdmin()?($('inv-store-sel')?.value ?? (activeStoreId()||'')):(activeStoreId()||'');
+  renderMovTable(viewSid);
+  renderInvTable(viewSid);
 }
 
 // ═══════════════════════════════════════════════
@@ -1762,9 +1798,40 @@ function renderProductos(filter){
 }
 function filterProductos(val){ renderProductos(val); }
 function renderCatSelect(selectedCat){
-  // ahora usa datalist
-  const dl=$('cat-datalist'); if(dl) dl.innerHTML=categories.map(c=>`<option value="${c}">`).join('');
-  const inp=$('prod-cat'); if(inp) inp.value=selectedCat||'';
+  const sel=$('prod-cat'); if(!sel) return;
+  const opts=categories.map(c=>`<option value="${c}">${c}</option>`).join('');
+  sel.innerHTML=opts+`<option value="__new__">➕ Nueva categoría…</option>`;
+  if(selectedCat && categories.includes(selectedCat)) sel.value=selectedCat;
+  else if(categories.length) sel.value=categories[0];
+  else sel.value='__new__';
+  onCatSelectChange();
+}
+// Muestra/oculta el campo de texto cuando se elige "Nueva categoría"
+function onCatSelectChange(){
+  const sel=$('prod-cat'), nueva=$('prod-cat-nueva'); if(!sel||!nueva) return;
+  if(sel.value==='__new__'){ nueva.style.display=''; nueva.focus(); }
+  else { nueva.style.display='none'; nueva.value=''; }
+}
+// Devuelve la categoría final (existente o nueva escrita)
+function getCatValue(){
+  const sel=$('prod-cat'), nueva=$('prod-cat-nueva');
+  if(sel && sel.value==='__new__') return (nueva?.value||'').trim();
+  return sel?.value||'';
+}
+// Muestra el margen de ganancia (precio - costo) en vivo
+function calcMargen(){
+  const box=$('prod-margen'); if(!box) return;
+  const costo=parseFloat($('prod-costo')?.value)||0;
+  const precio=parseFloat($('prod-precio')?.value)||0;
+  if(!precio){ box.style.display='none'; return; }
+  const ganancia=precio-costo;
+  const pct=precio>0?(ganancia/precio*100):0;
+  let bg,color;
+  if(ganancia<0){ bg='rgba(168,61,52,.10)'; color='var(--danger)'; }
+  else if(pct<10){ bg='rgba(193,138,42,.12)'; color='#9a6b14'; }
+  else { bg='rgba(99,118,91,.10)'; color='var(--sage)'; }
+  box.style.background=bg; box.style.color=color; box.style.display='';
+  box.textContent=`Ganancia por ${$('prod-unidad')?.value||'unidad'}: ${fmt(ganancia)}  ·  margen ${pct.toFixed(0)}%`;
 }
 function abrirModalProducto(id){
   const p=id?getProduct(id):null;
@@ -1794,6 +1861,13 @@ function abrirModalProducto(id){
       }
     }
   }
+  // Desplegable "Más opciones": cerrado al crear; abierto al editar si hay datos avanzados
+  const adv=$('prod-advanced');
+  if(adv){
+    const tieneAvanzados=!!(p&&(p.sku||p.priceMayoreo||p.cost||(p.minStock&&p.minStock!==5)||(p.vida&&p.vida!==15)||(p.minMayoreo&&p.minMayoreo!==5)));
+    adv.open=tieneAvanzados;
+  }
+  calcMargen();
   $('modal-producto').classList.add('is-open');
 }
 function saveProducto(){
@@ -1801,7 +1875,7 @@ function saveProducto(){
   const data={
     sku:$('prod-sku').value.trim(),
     name:$('prod-nombre').value.trim(),
-    cat:$('prod-cat').value,
+    cat:getCatValue(),
     unit:$('prod-unidad').value,
     priceNormal:parseFloat($('prod-precio').value)||0,
     priceMayoreo:parseFloat($('prod-precio-mayoreo').value)||0,
@@ -1811,10 +1885,11 @@ function saveProducto(){
     vida:parseInt($('prod-vida').value)||15,
   };
   if(!data.name){showToast('El nombre es obligatorio','warn');return;}
-  // auto-guardar categoría nueva
-  const catVal=($('prod-cat')?.value||'').trim();
-  if(catVal && !categories.includes(catVal)){ categories.push(catVal); }
-  data.cat = catVal || data.cat;
+  // auto-guardar categoría nueva si se escribió una
+  const catVal=getCatValue();
+  if(!catVal){showToast('Elige o escribe una categoría','warn');return;}
+  if(!categories.includes(catVal)){ categories.push(catVal); }
+  data.cat=catVal;
   let resultId=id;
   if(id){
     const idx=products.findIndex(p=>p.id===id);
