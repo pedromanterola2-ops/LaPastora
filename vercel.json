@@ -1,9 +1,6 @@
 {
-  "framework": null,
-  "buildCommand": "echo 'sitio estatico - sin build'",
-  "installCommand": "echo 'sin install'",
-  "outputDirectory": "static",
-  "rewrites": [
-    { "source": "/(.*)", "destination": "/index.html" }
-  ]
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }],
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "framework": "vite"
 }
