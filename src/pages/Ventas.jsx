@@ -16,6 +16,14 @@ import {
 // ──────────────────────────────────────────────────────────────
 //  CONSTANTES
 // ──────────────────────────────────────────────────────────────
+const UNIDADES_DECIMALES = new Set([
+  'kg','kilo','kilogramo','kilogramos',
+  'g','gr','gramo','gramos',
+  'l','lt','litro','litros',
+  'ml','mililitro','mililitros',
+])
+const permiteDecimales = u => UNIDADES_DECIMALES.has((u ?? '').toLowerCase().trim())
+
 const PUNTOS = {
   punto_a: { label: 'Punto A', short: 'A', ubicacion: 'punto_a' },
   punto_b: { label: 'Punto B', short: 'B', ubicacion: 'punto_b' },
@@ -262,9 +270,12 @@ function PantallaVenta({
   function cambiarQty(idx, delta) {
     setCarrito(prev => {
       const item = prev[idx]
-      const n = item.cantidad + delta
+      // + sube al siguiente entero; − baja al entero anterior (descarta decimales)
+      const n = delta > 0
+        ? Math.floor(item.cantidad) + 1
+        : Math.ceil(item.cantidad)  - 1
       if (n <= 0) return prev.filter((_, i) => i !== idx)
-      if (delta > 0 && n > item.stock) {
+      if (n > item.stock) {
         toast.error(`Solo hay ${item.stock} ${item.unidad} en stock`)
         return prev
       }
@@ -424,44 +435,49 @@ function PantallaVenta({
                                flex items-center justify-center hover:bg-slate-200 active:scale-95 transition-all">
                     <Minus size={16} />
                   </button>
-                  <div className="relative flex items-center">
+                  {permiteDecimales(item.unidad) ? (
+                    <div className="relative flex items-center">
+                      <input
+                        type="number" inputMode="decimal"
+                        value={item.cantidad}
+                        onChange={e => setQty(idx, e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'ArrowUp')   { e.preventDefault(); cambiarDecimal(idx,  0.1) }
+                          if (e.key === 'ArrowDown') { e.preventDefault(); cambiarDecimal(idx, -0.1) }
+                        }}
+                        aria-label={`Cantidad de ${item.nombre}`}
+                        className="w-14 text-center bg-slate-50 text-slate-800 rounded-xl py-1.5 text-sm pr-5
+                                   border border-slate-200 focus:outline-none focus:border-blue-400
+                                   [&::-webkit-inner-spin-button]:hidden [&::-webkit-outer-spin-button]:hidden"
+                        style={{ MozAppearance: 'textfield' }}
+                        min="0.1" step="0.1"
+                      />
+                      <div className="absolute right-0.5 top-0 bottom-0 flex flex-col justify-center">
+                        <button type="button" tabIndex={-1}
+                          onMouseDown={e => { e.preventDefault(); cambiarDecimal(idx, 0.1) }}
+                          aria-label={`Aumentar decimal de ${item.nombre}`}
+                          className="h-[14px] w-4 flex items-center justify-center text-slate-400 hover:text-slate-700">
+                          <svg width="7" height="4" viewBox="0 0 7 4" fill="currentColor"><path d="M3.5 0L7 4H0z"/></svg>
+                        </button>
+                        <button type="button" tabIndex={-1}
+                          onMouseDown={e => { e.preventDefault(); cambiarDecimal(idx, -0.1) }}
+                          aria-label={`Reducir decimal de ${item.nombre}`}
+                          className="h-[14px] w-4 flex items-center justify-center text-slate-400 hover:text-slate-700">
+                          <svg width="7" height="4" viewBox="0 0 7 4" fill="currentColor"><path d="M3.5 4L0 0H7z"/></svg>
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
                     <input
-                      type="number"
-                      inputMode="decimal"
+                      type="number" inputMode="numeric"
                       value={item.cantidad}
                       onChange={e => setQty(idx, e.target.value)}
-                      onKeyDown={e => {
-                        if (e.key === 'ArrowUp')   { e.preventDefault(); cambiarDecimal(idx,  0.1) }
-                        if (e.key === 'ArrowDown') { e.preventDefault(); cambiarDecimal(idx, -0.1) }
-                      }}
                       aria-label={`Cantidad de ${item.nombre}`}
-                      className="w-14 text-center bg-slate-50 text-slate-800 rounded-xl py-1.5 text-sm pr-5
-                                 border border-slate-200 focus:outline-none focus:border-blue-400
-                                 [&::-webkit-inner-spin-button]:hidden [&::-webkit-outer-spin-button]:hidden"
-                      style={{ MozAppearance: 'textfield' }}
-                      min="0.1" step="0.1"
+                      className="w-12 text-center bg-slate-50 text-slate-800 rounded-xl py-1.5 text-sm
+                                 border border-slate-200 focus:outline-none focus:border-blue-400"
+                      min="1" step="1"
                     />
-                    <div className="absolute right-0.5 top-0 bottom-0 flex flex-col justify-center">
-                      <button
-                        type="button"
-                        onMouseDown={e => { e.preventDefault(); cambiarDecimal(idx, 0.1) }}
-                        tabIndex={-1}
-                        aria-label={`Aumentar decimal de ${item.nombre}`}
-                        className="h-[14px] w-4 flex items-center justify-center text-slate-400 hover:text-slate-700"
-                      >
-                        <svg width="7" height="4" viewBox="0 0 7 4" fill="currentColor"><path d="M3.5 0L7 4H0z"/></svg>
-                      </button>
-                      <button
-                        type="button"
-                        onMouseDown={e => { e.preventDefault(); cambiarDecimal(idx, -0.1) }}
-                        tabIndex={-1}
-                        aria-label={`Reducir decimal de ${item.nombre}`}
-                        className="h-[14px] w-4 flex items-center justify-center text-slate-400 hover:text-slate-700"
-                      >
-                        <svg width="7" height="4" viewBox="0 0 7 4" fill="currentColor"><path d="M3.5 4L0 0H7z"/></svg>
-                      </button>
-                    </div>
-                  </div>
+                  )}
                   <button onClick={() => cambiarQty(idx, 1)}
                     disabled={item.cantidad >= item.stock}
                     aria-label={`Aumentar cantidad de ${item.nombre}`}
