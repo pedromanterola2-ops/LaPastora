@@ -1423,8 +1423,9 @@ function filterVentaProd(val){
 function addToCart(productId){
   const p=getProduct(productId);
   if(!p) return;
+  const step=p.unit==='piezas'?1:0.1;
   const existing=state.cart.find(c=>c.productId===productId);
-  if(existing){existing.qty=parseFloat((existing.qty+1).toFixed(2));}
+  if(existing){existing.qty=parseFloat((existing.qty+step).toFixed(2));}
   else{state.cart.push({productId,qty:1});}
   renderCarrito();
 }
@@ -1446,15 +1447,16 @@ function renderCarrito(){
     const isMayoreo=c.qty>=p.minMayoreo;
     const price=isMayoreo?p.priceMayoreo:p.priceNormal;
     const sub=price*c.qty;
+    const step=p.unit==='piezas'?1:0.1;
     return `<div class="cart-item">
       <div style="flex:1;min-width:0">
         <div style="font-size:13px;font-weight:600">${p.name}</div>
         <div style="font-size:11px;color:var(--muted)">${fmt(price)}/${p.unit}${isMayoreo?' <span class="mayoreo-badge">mayoreo</span>':''}</div>
       </div>
       <div class="qty-control">
-        <button class="qty-btn" onclick="updateCartQty('${p.id}',Math.max(0.5,${c.qty}-1))">−</button>
-        <input type="number" class="qty-input" value="${c.qty}" min="0.01" step="${p.unit==='piezas'?1:0.1}" onchange="updateCartQty('${p.id}',this.value)">
-        <button class="qty-btn" onclick="updateCartQty('${p.id}',${c.qty}+1)">+</button>
+        <button class="qty-btn" onclick="updateCartQty('${p.id}',parseFloat(Math.max(${step},${c.qty}-${step}).toFixed(2)))">−</button>
+        <input type="number" class="qty-input" value="${c.qty}" min="${step}" step="${step}" onchange="updateCartQty('${p.id}',this.value)">
+        <button class="qty-btn" onclick="updateCartQty('${p.id}',parseFloat((${c.qty}+${step}).toFixed(2)))">+</button>
       </div>
       <div style="text-align:right;min-width:70px">
         <div style="font-weight:700">${fmt(sub)}</div>
