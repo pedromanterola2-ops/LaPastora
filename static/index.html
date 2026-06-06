@@ -92,6 +92,12 @@ input,select,textarea{cursor:text}
 .metric-value{font-size:26px;font-weight:800;line-height:1;margin:4px 0}
 .metric small{color:var(--muted);font-size:12px}
 .metric-badge{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:700;margin-top:4px}
+.badge-pending{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;background:var(--warn);color:#fff;border-radius:999px;font-size:10px;font-weight:800;margin-left:6px}
+.sol-card{background:var(--raised);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;margin-bottom:10px;cursor:pointer;transition:box-shadow .12s}
+.sol-card:hover{box-shadow:var(--shadow)}
+.sol-card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.sol-items-preview{font-size:12px;color:var(--muted);margin-top:4px}
+.sol-item-row{display:flex;gap:8px;align-items:center;margin-bottom:8px;padding:8px 10px;background:var(--inset);border-radius:8px}
 .badge-up{background:rgba(77,122,72,0.12);color:var(--ok);border:1px solid rgba(77,122,72,0.22)}
 .badge-down{background:rgba(168,61,52,0.1);color:var(--danger);border:1px solid rgba(168,61,52,0.22)}
 .badge-warn{background:rgba(179,107,33,0.1);color:var(--warn);border:1px solid rgba(179,107,33,0.22)}
@@ -749,6 +755,59 @@ canvas{max-width:100%}
   </div>
 </div>
 
+<!-- ══════════════════════ SOLICITUDES ══════════════════════ -->
+<div id="page-solicitudes" class="page">
+  <div class="section-head" style="margin-bottom:16px">
+    <h3>Solicitudes de reabastecimiento</h3>
+    <button class="primary-button" id="btn-nueva-sol" onclick="abrirModalNuevaSolicitud()">+ Nueva solicitud</button>
+  </div>
+  <!-- KPIs admin -->
+  <div class="grid g4 mb18" id="sol-kpis" style="display:none"></div>
+  <!-- Filtro tabs -->
+  <div class="tabs" style="margin-bottom:16px">
+    <div class="tab is-active" onclick="filtrarSolicitudes('todas',this)">Todas</div>
+    <div class="tab" onclick="filtrarSolicitudes('pendiente',this)">Pendientes</div>
+    <div class="tab" onclick="filtrarSolicitudes('aprobada',this)">Aprobadas</div>
+    <div class="tab" onclick="filtrarSolicitudes('rechazada',this)">Rechazadas</div>
+  </div>
+  <div id="solicitudes-list"></div>
+</div>
+
+<!-- Modal: nueva solicitud -->
+<div class="modal-overlay" id="modal-nueva-sol">
+  <div class="modal" style="max-width:540px">
+    <div class="modal-header">
+      <span class="modal-title">Nueva solicitud de reabastecimiento</span>
+      <button class="modal-close" onclick="cerrarModal('modal-nueva-sol')">✕</button>
+    </div>
+    <div class="form-group" style="margin-bottom:12px">
+      <label>Notas (opcional)</label>
+      <input type="text" id="sol-notas" placeholder="Ej. Urgente para fin de semana">
+    </div>
+    <div style="margin-bottom:10px">
+      <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em">Productos solicitados</div>
+      <div id="sol-items-wrap"></div>
+      <button class="ghost-button" style="width:100%;margin-top:8px;font-size:13px" onclick="addItemSolicitud()">+ Agregar producto</button>
+    </div>
+    <div class="modal-footer">
+      <button class="ghost-button" onclick="cerrarModal('modal-nueva-sol')">Cancelar</button>
+      <button class="primary-button" onclick="saveSolicitud()">Enviar solicitud</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: detalle solicitud -->
+<div class="modal-overlay" id="modal-det-sol">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-header">
+      <span class="modal-title" id="det-sol-title">Solicitud</span>
+      <button class="modal-close" onclick="cerrarModal('modal-det-sol')">✕</button>
+    </div>
+    <div id="det-sol-body"></div>
+    <div class="modal-footer" id="det-sol-footer"></div>
+  </div>
+</div>
+
 <!-- Modal: contraseña de login -->
 <div class="modal-overlay" id="modal-pwd">
   <div class="modal" style="max-width:360px;text-align:center">
@@ -818,9 +877,10 @@ let cajaActiva = { s1:null, s2:null }; // {storeId: {abierta:timestamp, userId, 
 let proveedores = []; // {id,name,tipo,tel,contacto,prod,ciudad,notas,activo,creado}
 let usuarios = []; // {id,name,role,avatar,storeId,password,activo}
 let metas = { s1:{ diaria:0 }, s2:{ diaria:0 } }; // metas diarias de venta por tienda
+let solicitudes = []; // {id,storeId,userId,status:'pendiente'|'aprobada'|'rechazada',items:[{productId,cantSolicitada,cantAprobada,notas}],notas,fecha,fechaRespuesta,adminId,notasAdmin}
 
 function saveData(){
-  const d={products,categories,inventory,sales,purchases,mermaList,traslados,movimientos,cajaLog,cajaActiva,proveedores,usuarios,metas};
+  const d={products,categories,inventory,sales,purchases,mermaList,traslados,movimientos,cajaLog,cajaActiva,proveedores,usuarios,metas,solicitudes};
   try{localStorage.setItem('lp_data',JSON.stringify(d));}catch(e){}
   if(!applyingRemote) schedulePush();   // ← sincroniza con la nube (otras tiendas)
 }
@@ -843,6 +903,7 @@ function loadData(){
     proveedores=d.proveedores||[];
     usuarios=d.usuarios&&d.usuarios.length?d.usuarios:[...DEFAULT_USERS];
     metas=d.metas||{s1:{diaria:0},s2:{diaria:0}};
+    solicitudes=d.solicitudes||[];
     // no fallback to demo data — keep whatever was saved (even empty)
   }catch(e){initEmpty();}
 }
@@ -850,7 +911,7 @@ function initEmpty(){
   products=[]; categories=['Quesos frescos','Quesos maduros','Cremas','Otros derivados'];
   inventory={central:{},s1:{},s2:{}}; sales=[]; purchases=[]; mermaList=[]; traslados=[];
   movimientos=[]; cajaLog=[]; cajaActiva={s1:null,s2:null}; proveedores=[];
-  usuarios=[...DEFAULT_USERS]; metas={s1:{diaria:0},s2:{diaria:0}};
+  usuarios=[...DEFAULT_USERS]; metas={s1:{diaria:0},s2:{diaria:0}}; solicitudes=[];
   saveData();
 }
 function initDemoData(){
@@ -1032,7 +1093,8 @@ function renderRail(){
   <nav class="nav-list">
     <button class="nav-button" data-page="ventas" onclick="goTo('ventas',this)"><span class="nav-icon">🛒</span><span>Ventas</span></button>
     <button class="nav-button" data-page="inventario" onclick="goTo('inventario',this)"><span class="nav-icon">📦</span><span>Inventario</span></button>
-    <button class="nav-button" data-page="merma" onclick="goTo('merma',this)"><span class="nav-icon">🗑️</span><span>Merma</span></button>`;
+    <button class="nav-button" data-page="merma" onclick="goTo('merma',this)"><span class="nav-icon">🗑️</span><span>Merma</span></button>
+    <button class="nav-button" data-page="solicitudes" onclick="goTo('solicitudes',this)" id="nav-solicitudes"><span class="nav-icon">📋</span><span>Solicitudes</span>${!isAdmin()&&getCountSolicitudesPendientes()>0?`<span class="badge-pending">${getCountSolicitudesPendientes()}</span>`:''}</button>`;
   if(admin){
     nav+=`
     <button class="nav-button" data-page="compras" onclick="goTo('compras',this)"><span class="nav-icon">📥</span><span>Compras</span></button>
@@ -1097,7 +1159,7 @@ function setViewStore(v){
 // ═══════════════════════════════════════════════
 //  NAVIGATION
 // ═══════════════════════════════════════════════
-const PAGE_TITLES={dashboard:'Dashboard',ventas:'Ventas',inventario:'Inventario',merma:'Merma',compras:'Compras',traslados:'Traslados',productos:'Productos',proveedores:'Proveedores',reportes:'Reportes',usuarios:'Usuarios'};
+const PAGE_TITLES={dashboard:'Dashboard',ventas:'Ventas',inventario:'Inventario',merma:'Merma',compras:'Compras',traslados:'Traslados',productos:'Productos',proveedores:'Proveedores',reportes:'Reportes',usuarios:'Usuarios',solicitudes:'Solicitudes de reabastecimiento'};
 function goTo(page,btn){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('is-active'));
   document.querySelectorAll('.nav-button').forEach(b=>b.classList.remove('is-active'));
@@ -1121,6 +1183,7 @@ function refreshPage(){
     case 'proveedores':renderProveedores();break;
     case 'reportes':renderReportes();break;
     case 'usuarios':renderUsuarios();break;
+    case 'solicitudes':renderSolicitudes();break;
   }
 }
 function switchTab(page,tab,el){
@@ -1583,16 +1646,36 @@ function invQtyCell(qty,p,checkLow){
   if(checkLow){ if(qty<=0) color='var(--danger)'; else if(qty<p.minStock) color='var(--warn)'; }
   return `<td style="font-weight:700;color:${color}">${fmtQty(qty,p.unit)}</td>`;
 }
+let invSortCol=null,invSortDir=1;
+function invSortClick(col){
+  if(invSortCol===col) invSortDir*=-1; else{invSortCol=col;invSortDir=1;}
+  const sel=$('inv-store-sel');
+  renderInvTable(sel?sel.value:(activeStoreId()||''));
+}
+function thS(col,content){
+  const a=invSortCol===col;
+  return `<th onclick="invSortClick('${col}')" title="Ordenar" style="cursor:pointer;user-select:none${a?';color:var(--brand)':''}">${content} <span style="font-size:10px;opacity:.65">${a?(invSortDir===1?'▲':'▼'):'⇅'}</span></th>`;
+}
+function nearestExpiryProd(pid){
+  const lots=[...(getStoreInv('central',pid).lots||[]),...(getStoreInv('s1',pid).lots||[]),...(getStoreInv('s2',pid).lots||[])];
+  return lots.filter(l=>l.expiry).reduce((a,l)=>!a||l.expiry<a?l.expiry:a,'');
+}
 function renderInvTable(sid){
   const thead=$('inv-thead');
   // ── Vista "Todas las tiendas": desglose por ubicación ──
   if(!sid){
-    if(thead) thead.innerHTML=`<tr><th>Producto</th><th>Unidad</th>`+
-      `<th><span class="chip central">Central</span></th>`+
-      `<th><span class="chip s1">Centro</span></th>`+
-      `<th><span class="chip s2">Norte</span></th>`+
-      `<th>Total</th><th>Mín.</th><th>Estado</th></tr>`;
-    $('inv-table').innerHTML=products.map(p=>{
+    if(thead) thead.innerHTML=`<tr>
+      ${thS('name','Producto')}
+      <th>Unidad</th>
+      ${thS('central','<span class="chip central">Central</span>')}
+      ${thS('s1','<span class="chip s1">Centro</span>')}
+      ${thS('s2','<span class="chip s2">Norte</span>')}
+      ${thS('total','Total')}
+      ${thS('min','Mín.')}
+      ${thS('dias','Días cad.')}
+      ${thS('estado','Estado')}
+    </tr>`;
+    const rows=products.map(p=>{
       const c=getStoreInv('central',p.id).qty||0;
       const a=getStoreInv('s1',p.id).qty||0;
       const b=getStoreInv('s2',p.id).qty||0;
@@ -1600,7 +1683,14 @@ function renderInvTable(sid){
       const low=(a<p.minStock||b<p.minStock);
       const statusCls=total<=0?'danger':low?'warn':'ok';
       const statusTxt=total<=0?'Sin stock':low?'Stock bajo':'OK';
-      return `<tr>
+      const ne=nearestExpiryProd(p.id);
+      const d=daysUntil(ne);
+      const diasHtml=ne?`<span style="font-weight:${d<=7?700:400};color:${d<=3?'var(--danger)':d<=7?'var(--warn)':d<=30?'var(--ink)':'var(--muted)'}">${d}d</span>`:'—';
+      const _sv=invSortCol==='name'?p.name:invSortCol==='central'?c:invSortCol==='s1'?a:invSortCol==='s2'?b:invSortCol==='total'?total:invSortCol==='min'?(p.minStock||0):invSortCol==='dias'?d:invSortCol==='estado'?statusTxt:p.name;
+      return {p,c,a,b,total,statusCls,statusTxt,diasHtml,_sv};
+    });
+    if(invSortCol) rows.sort((x,y)=>typeof x._sv==='string'?invSortDir*x._sv.localeCompare(y._sv):invSortDir*(x._sv-y._sv));
+    $('inv-table').innerHTML=rows.map(({p,c,a,b,total,statusCls,statusTxt,diasHtml})=>`<tr>
         <td><strong>${p.name}</strong><div style="font-size:11px;color:var(--muted)">${p.sku}</div></td>
         <td><span class="chip">${p.unit}</span></td>
         ${invQtyCell(c,p,false)}
@@ -1608,21 +1698,35 @@ function renderInvTable(sid){
         ${invQtyCell(b,p,true)}
         <td style="font-weight:800">${fmtQty(total,p.unit)}</td>
         <td style="color:var(--muted)">${fmtQty(p.minStock,p.unit)}</td>
+        <td style="text-align:center">${diasHtml}</td>
         <td><span class="status ${statusCls}">${statusTxt}</span></td>
-      </tr>`;
-    }).join('');
+      </tr>`).join('');
     return;
   }
   // ── Vista de una sola ubicación: detalle completo ──
-  if(thead) thead.innerHTML=`<tr><th>Producto</th><th>Unidad</th><th>Stock</th><th>Mín.</th><th>P. Normal</th><th>P. Mayoreo</th><th>Costo</th><th>Vence</th><th>Estado</th></tr>`;
-  const rows=products.map(p=>{
+  if(thead) thead.innerHTML=`<tr>
+    ${thS('name','Producto')}
+    <th>Unidad</th>
+    ${thS('stock','Stock')}
+    ${thS('min','Mín.')}
+    ${thS('precio','P. Normal')}
+    ${thS('mayoreo','P. Mayoreo')}
+    ${thS('costo','Costo')}
+    ${thS('dias','Días cad.')}
+    ${thS('estado','Estado')}
+  </tr>`;
+  const rows2=products.map(p=>{
     const inv=getStoreInv(sid,p.id);
     const qty=inv.qty||0;
     const expiry=inv.lots?.reduce((a,l)=>!a||l.expiry<a?l.expiry:a,'');
     const d=daysUntil(expiry);
     const statusCls=qty<=0?'danger':qty<p.minStock?'warn':'ok';
     const statusTxt=qty<=0?'Sin stock':qty<p.minStock?'Stock bajo':'OK';
-    return `<tr>
+    const _sv=invSortCol==='name'?p.name:invSortCol==='stock'?qty:invSortCol==='min'?(p.minStock||0):invSortCol==='precio'?(p.priceNormal||0):invSortCol==='mayoreo'?(p.priceMayoreo||0):invSortCol==='costo'?(p.cost||0):invSortCol==='dias'?d:invSortCol==='estado'?statusTxt:p.name;
+    return {p,qty,expiry,d,statusCls,statusTxt,_sv};
+  });
+  if(invSortCol) rows2.sort((x,y)=>typeof x._sv==='string'?invSortDir*x._sv.localeCompare(y._sv):invSortDir*(x._sv-y._sv));
+  $('inv-table').innerHTML=rows2.map(({p,qty,expiry,d,statusCls,statusTxt})=>`<tr>
       <td><strong>${p.name}</strong><div style="font-size:11px;color:var(--muted)">${p.sku}</div></td>
       <td><span class="chip">${p.unit}</span></td>
       <td style="font-weight:700">${fmtQty(qty,p.unit)}</td>
@@ -1632,9 +1736,7 @@ function renderInvTable(sid){
       <td>${fmt(p.cost)}</td>
       <td>${expiry?`<span style="color:${d<=3?'var(--danger)':d<=7?'var(--warn)':'var(--muted)'};font-size:12px">${expiry} (${d}d)</span>`:'—'}</td>
       <td><span class="status ${statusCls}">${statusTxt}</span></td>
-    </tr>`;
-  }).join('');
-  $('inv-table').innerHTML=rows;
+    </tr>`).join('');
 }
 function renderMovTable(sid){
   const t=$('mov-table'); if(!t) return;
@@ -2625,6 +2727,212 @@ function resetApp(){
 }
 
 // ═══════════════════════════════════════════════
+//  SOLICITUDES DE REABASTECIMIENTO
+// ═══════════════════════════════════════════════
+let _solFiltro = 'todas';
+
+function getCountSolicitudesPendientes(){
+  if(isAdmin()) return solicitudes.filter(s=>s.status==='pendiente').length;
+  const sid=state.user?.storeId;
+  return solicitudes.filter(s=>s.storeId===sid&&s.status==='pendiente').length;
+}
+
+function renderSolicitudes(){
+  const admin=isAdmin();
+  // Mostrar/ocultar botón nueva solicitud
+  const btn=$('btn-nueva-sol');
+  if(btn) btn.style.display=admin?'none':'inline-flex';
+
+  // KPIs solo admin
+  const kpis=$('sol-kpis');
+  if(kpis){
+    if(admin){
+      kpis.style.display='grid';
+      const pend=solicitudes.filter(s=>s.status==='pendiente').length;
+      const apro=solicitudes.filter(s=>s.status==='aprobada').length;
+      const rech=solicitudes.filter(s=>s.status==='rechazada').length;
+      kpis.innerHTML=`
+        <div class="metric"><div><div class="eyebrow">Total</div><div class="metric-value">${solicitudes.length}</div></div></div>
+        <div class="metric"><div><div class="eyebrow">Pendientes</div><div class="metric-value text-copper">${pend}</div></div></div>
+        <div class="metric"><div><div class="eyebrow">Aprobadas</div><div class="metric-value" style="color:var(--ok)">${apro}</div></div></div>
+        <div class="metric"><div><div class="eyebrow">Rechazadas</div><div class="metric-value" style="color:var(--muted)">${rech}</div></div></div>`;
+    } else {
+      kpis.style.display='none';
+    }
+  }
+
+  // Lista
+  let list=[...solicitudes].sort((a,b)=>b.fecha.localeCompare(a.fecha));
+  if(!admin) list=list.filter(s=>s.storeId===state.user?.storeId);
+  if(_solFiltro!=='todas') list=list.filter(s=>s.status===_solFiltro);
+
+  const el=$('solicitudes-list');
+  if(!el) return;
+
+  if(!list.length){
+    el.innerHTML=`<div style="text-align:center;padding:48px 0;color:var(--muted)">
+      <div style="font-size:36px;margin-bottom:10px">📋</div>
+      <div style="font-size:13px">${_solFiltro==='todas'?'No hay solicitudes aún.':'No hay solicitudes con este estado.'}</div>
+      ${!admin?`<button class="primary-button" style="margin-top:16px" onclick="abrirModalNuevaSolicitud()">+ Nueva solicitud</button>`:''}
+    </div>`;
+    return;
+  }
+
+  el.innerHTML=list.map(s=>{
+    const store=s.storeId==='s1'?'Tienda Centro':'Tienda Norte';
+    const user=usuarios.find(u=>u.id===s.userId);
+    const fecha=new Date(s.fecha).toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'});
+    const statusLabel={pendiente:'Pendiente',aprobada:'Aprobada',rechazada:'Rechazada'}[s.status];
+    const statusClass={pendiente:'warn',aprobada:'ok',rechazada:'danger'}[s.status];
+    const itemsText=s.items.map(i=>{
+      const p=products.find(x=>x.id===i.productId);
+      return `${p?.name||'?'} ×${i.cantSolicitada}`;
+    }).join(', ');
+    return `<div class="sol-card" onclick="verDetalleSolicitud('${s.id}')">
+      <div class="sol-card-header">
+        <div>
+          <strong style="font-size:13px">${admin?`${store} — `:''}${user?.name||'Usuario'}</strong>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">${fecha}</div>
+        </div>
+        <span class="status ${statusClass}">${statusLabel}</span>
+      </div>
+      <div class="sol-items-preview">${itemsText||'Sin productos'}</div>
+      ${s.notas?`<div style="font-size:11px;color:var(--muted);margin-top:5px;font-style:italic">"${s.notas}"</div>`:''}
+    </div>`;
+  }).join('');
+}
+
+function filtrarSolicitudes(filtro, el){
+  _solFiltro=filtro;
+  document.querySelectorAll('#page-solicitudes .tab').forEach(t=>t.classList.remove('is-active'));
+  if(el) el.classList.add('is-active');
+  renderSolicitudes();
+}
+
+function abrirModalNuevaSolicitud(){
+  $('sol-notas').value='';
+  $('sol-items-wrap').innerHTML='';
+  addItemSolicitud();
+  $('modal-nueva-sol').classList.add('is-open');
+}
+
+function addItemSolicitud(){
+  const wrap=$('sol-items-wrap');
+  const idx=wrap.children.length;
+  const opts=products.filter(p=>p.activo!==false).map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+  const row=document.createElement('div');
+  row.className='sol-item-row';
+  row.innerHTML=`
+    <select style="flex:1;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--raised);font-size:13px" class="sol-item-prod">
+      <option value="">— Producto —</option>${opts}
+    </select>
+    <input type="number" min="1" step="1" placeholder="Cant." class="sol-item-cant" style="width:70px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;text-align:center;font-size:13px">
+    <button onclick="this.parentElement.remove()" style="background:none;border:none;color:var(--danger);font-size:16px;cursor:pointer;padding:0 4px" title="Quitar">✕</button>`;
+  wrap.appendChild(row);
+}
+
+function saveSolicitud(){
+  const rows=[...$('sol-items-wrap').children];
+  const items=[];
+  for(const row of rows){
+    const productId=row.querySelector('.sol-item-prod').value;
+    const cant=parseInt(row.querySelector('.sol-item-cant').value)||0;
+    if(!productId){showToast('Selecciona un producto en cada fila','warn');return;}
+    if(cant<1){showToast('La cantidad debe ser al menos 1','warn');return;}
+    items.push({productId,cantSolicitada:cant,cantAprobada:0,notas:''});
+  }
+  if(!items.length){showToast('Agrega al menos un producto','warn');return;}
+  const sol={
+    id:'sol-'+Date.now(),
+    storeId:state.user.storeId,
+    userId:state.user.id,
+    status:'pendiente',
+    items,
+    notas:$('sol-notas').value.trim(),
+    fecha:new Date().toISOString(),
+    fechaRespuesta:null,
+    adminId:null,
+    notasAdmin:''
+  };
+  solicitudes.push(sol);
+  saveData();
+  cerrarModal('modal-nueva-sol');
+  showToast('Solicitud enviada al administrador','ok');
+  renderSolicitudes();
+}
+
+function verDetalleSolicitud(id){
+  const s=solicitudes.find(x=>x.id===id);
+  if(!s) return;
+  const admin=isAdmin();
+  const store=s.storeId==='s1'?'Tienda Centro':'Tienda Norte';
+  const user=usuarios.find(u=>u.id===s.userId);
+  const fecha=new Date(s.fecha).toLocaleDateString('es-MX',{day:'2-digit',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'});
+  const statusLabel={pendiente:'Pendiente',aprobada:'Aprobada',rechazada:'Rechazada'}[s.status];
+  const statusClass={pendiente:'warn',aprobada:'ok',rechazada:'danger'}[s.status];
+
+  $('det-sol-title').textContent=`Solicitud — ${store}`;
+  $('det-sol-body').innerHTML=`
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div style="font-size:12px;color:var(--muted)">${fecha} · <strong>${user?.name||'?'}</strong></div>
+      <span class="status ${statusClass}">${statusLabel}</span>
+    </div>
+    ${s.notas?`<div style="font-size:12px;color:var(--muted);margin-bottom:14px;font-style:italic;padding:8px 12px;background:var(--inset);border-radius:8px">"${s.notas}"</div>`:''}
+    <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:14px">
+      <thead><tr style="border-bottom:1px solid var(--line)">
+        <th style="text-align:left;padding:6px 0;font-size:11px;color:var(--muted);font-weight:700">PRODUCTO</th>
+        <th style="text-align:center;padding:6px 0;font-size:11px;color:var(--muted);font-weight:700">SOLICITADO</th>
+        ${admin&&s.status==='pendiente'?'<th style="text-align:center;padding:6px 0;font-size:11px;color:var(--muted);font-weight:700">APROBAR</th>':''}
+        ${s.status!=='pendiente'?'<th style="text-align:center;padding:6px 0;font-size:11px;color:var(--muted);font-weight:700">APROBADO</th>':''}
+      </tr></thead>
+      <tbody>${s.items.map((it,i)=>{
+        const p=products.find(x=>x.id===it.productId);
+        return `<tr style="border-bottom:1px solid var(--line)">
+          <td style="padding:8px 0">${p?.name||'?'}</td>
+          <td style="text-align:center;padding:8px 0">${it.cantSolicitada} ${p?.unit||''}</td>
+          ${admin&&s.status==='pendiente'?`<td style="text-align:center;padding:8px 4px"><input type="number" min="0" step="1" value="${it.cantSolicitada}" data-sol-item="${i}" style="width:60px;padding:4px;border:1px solid var(--line);border-radius:6px;text-align:center;font-size:13px"></td>`:''}
+          ${s.status!=='pendiente'?`<td style="text-align:center;padding:8px 0;${it.cantAprobada>0?'color:var(--ok)':'color:var(--muted)'}">${it.cantAprobada}</td>`:''}
+        </tr>`;
+      }).join('')}</tbody>
+    </table>
+    ${admin&&s.status==='pendiente'?`<div class="form-group"><label>Notas para la tienda (opcional)</label><input type="text" id="det-sol-notas-admin" placeholder="Ej. Se envía el lunes" style="margin-top:4px"></div>`:''}
+    ${s.notasAdmin?`<div style="font-size:12px;margin-top:8px;padding:8px 12px;background:rgba(77,122,72,.07);border-radius:8px;color:var(--herb)">📝 Admin: "${s.notasAdmin}"</div>`:''}`;
+
+  // Footer
+  const footer=$('det-sol-footer');
+  if(admin&&s.status==='pendiente'){
+    footer.innerHTML=`
+      <button class="ghost-button" onclick="cerrarModal('modal-det-sol')">Cerrar</button>
+      <button style="background:rgba(168,61,52,.1);border:1px solid rgba(168,61,52,.35);color:var(--danger);border-radius:var(--radius);padding:8px 18px;font-size:13px;font-weight:700;cursor:pointer" onclick="responderSolicitud('${id}','rechazada')">Rechazar</button>
+      <button class="primary-button" onclick="responderSolicitud('${id}','aprobada')">Aprobar</button>`;
+  } else {
+    footer.innerHTML=`<button class="primary-button" style="width:100%" onclick="cerrarModal('modal-det-sol')">Cerrar</button>`;
+  }
+  $('modal-det-sol').classList.add('is-open');
+  // save id for respond action
+  $('modal-det-sol').dataset.solId=id;
+}
+
+function responderSolicitud(id, accion){
+  const s=solicitudes.find(x=>x.id===id);
+  if(!s) return;
+  // Collect approved quantities
+  document.querySelectorAll('[data-sol-item]').forEach(inp=>{
+    const i=parseInt(inp.dataset.solItem);
+    s.items[i].cantAprobada=parseInt(inp.value)||0;
+  });
+  s.status=accion;
+  s.fechaRespuesta=new Date().toISOString();
+  s.adminId=state.user?.id||null;
+  s.notasAdmin=$('det-sol-notas-admin')?.value?.trim()||'';
+  saveData();
+  cerrarModal('modal-det-sol');
+  showToast(accion==='aprobada'?'Solicitud aprobada':'Solicitud rechazada', accion==='aprobada'?'ok':'warn');
+  renderSolicitudes();
+  renderShell(); // refresh badge
+}
+
+// ═══════════════════════════════════════════════
 //  NUBE — Supabase (sincronización entre las 2 tiendas)
 // ═══════════════════════════════════════════════
 const SUPA_URL   = 'https://ygeuqlohycckwngcmmxl.supabase.co';     // ← se inyecta desde app/.env
@@ -2641,7 +2949,7 @@ let pushPending = false;
 
 // Reúne todo el estado en un solo objeto (mismo formato que localStorage)
 function collectData(){
-  return {products,categories,inventory,sales,purchases,mermaList,traslados,movimientos,cajaLog,cajaActiva,proveedores,usuarios,metas};
+  return {products,categories,inventory,sales,purchases,mermaList,traslados,movimientos,cajaLog,cajaActiva,proveedores,usuarios,metas,solicitudes};
 }
 // Vuelca un objeto de datos a las variables globales (reusado por carga local, nube y realtime)
 function applyData(d){
@@ -2660,6 +2968,7 @@ function applyData(d){
   proveedores = d.proveedores || [];
   usuarios    = d.usuarios&&d.usuarios.length?d.usuarios:[...DEFAULT_USERS];
   metas       = d.metas       || {s1:{diaria:0},s2:{diaria:0}};
+  solicitudes = d.solicitudes || [];
 }
 
 // ── Indicador de estado de conexión (pastilla fija, no intrusiva) ──
