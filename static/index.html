@@ -1168,6 +1168,7 @@ function goTo(page,btn){
   if(btn) btn.classList.add('is-active');
   else {const nb=document.querySelector(`[data-page="${page}"]`);if(nb)nb.classList.add('is-active');}
   $('page-title').textContent=PAGE_TITLES[page]||page;
+  const ct=$('content');if(ct)ct.scrollTop=0;
   state.page=page;
   refreshPage();
 }
