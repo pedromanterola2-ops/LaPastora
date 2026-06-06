@@ -354,7 +354,7 @@ canvas{max-width:100%}
   </div>
   <div id="inventario-tab-actual" class="tab-content is-active">
     <div class="panel">
-      <div class="section-head"><h3>Inventario por producto</h3><div class="flex-gap" id="inv-store-filter"></div></div>
+      <div class="section-head"><h3>Inventario por producto</h3><div class="flex-gap"><input type="text" placeholder="Buscar..." style="width:180px;min-height:30px;padding:4px 9px" oninput="invSearchTerm=this.value.toLowerCase();renderInvTable($('inv-store-sel')?$('inv-store-sel').value:(activeStoreId()||''))"><div class="flex-gap" id="inv-store-filter"></div></div></div>
       <div class="table-wrap">
         <table><thead id="inv-thead"><tr><th>Producto</th><th>Unidad</th><th>Stock</th><th>Mín.</th><th>P. Normal</th><th>P. Mayoreo</th><th>Costo</th><th>Vence</th><th>Estado</th></tr></thead>
         <tbody id="inv-table"></tbody></table>
@@ -1646,7 +1646,7 @@ function invQtyCell(qty,p,checkLow){
   if(checkLow){ if(qty<=0) color='var(--danger)'; else if(qty<p.minStock) color='var(--warn)'; }
   return `<td style="font-weight:700;color:${color}">${fmtQty(qty,p.unit)}</td>`;
 }
-let invSortCol=null,invSortDir=1;
+let invSortCol=null,invSortDir=1,invSearchTerm='';
 function invSortClick(col){
   if(invSortCol===col) invSortDir*=-1; else{invSortCol=col;invSortDir=1;}
   const sel=$('inv-store-sel');
@@ -1675,7 +1675,8 @@ function renderInvTable(sid){
       ${thS('dias','Días cad.')}
       ${thS('estado','Estado')}
     </tr>`;
-    const rows=products.map(p=>{
+    const _prods=invSearchTerm?products.filter(p=>p.name.toLowerCase().includes(invSearchTerm)):products;
+    const rows=_prods.map(p=>{
       const c=getStoreInv('central',p.id).qty||0;
       const a=getStoreInv('s1',p.id).qty||0;
       const b=getStoreInv('s2',p.id).qty||0;
@@ -1715,7 +1716,8 @@ function renderInvTable(sid){
     ${thS('dias','Días cad.')}
     ${thS('estado','Estado')}
   </tr>`;
-  const rows2=products.map(p=>{
+  const _prods2=invSearchTerm?products.filter(p=>p.name.toLowerCase().includes(invSearchTerm)):products;
+  const rows2=_prods2.map(p=>{
     const inv=getStoreInv(sid,p.id);
     const qty=inv.qty||0;
     const expiry=inv.lots?.reduce((a,l)=>!a||l.expiry<a?l.expiry:a,'');
