@@ -1,8 +1,8 @@
 {
   "framework": null,
-  "buildCommand": "echo 'sitio estatico - sin build'",
-  "installCommand": "echo 'sin install'",
-  "outputDirectory": "static",
+  "buildCommand": "npm run build",
+  "installCommand": "npm install",
+  "outputDirectory": "dist",
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
   ]

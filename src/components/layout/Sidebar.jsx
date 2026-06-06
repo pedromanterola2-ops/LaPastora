@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router-dom'
+import { useState, useEffect } from 'react'
 import {
   LayoutDashboard,
   Users,
@@ -11,9 +12,11 @@ import {
   ChevronLeft,
   X,
   UserCog,
+  ClipboardList,
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { NAV_PATHS_POR_ROL } from '../../lib/permissions'
+import { getCountSolicitudesPendientes } from '../../lib/solicitudes'
 
 const ALL_NAV_ITEMS = [
   { path: '/',               label: 'Dashboard',        icon: LayoutDashboard,  exact: true },
@@ -24,11 +27,27 @@ const ALL_NAV_ITEMS = [
   { path: '/ventas',         label: 'Ventas',            icon: Receipt },
   { path: '/transferencias', label: 'Transferencias',    icon: ArrowLeftRight },
   { path: '/reportes',       label: 'Reportes',          icon: BarChart3 },
+  { path: '/solicitudes',    label: 'Solicitudes',       icon: ClipboardList, badge: true },
   { path: '/usuarios',       label: 'Usuarios',          icon: UserCog },
 ]
 
 export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }) {
   const { profile } = useAuth()
+  const esAdmin = profile?.rol === 'admin'
+
+  // Badge: conteo de solicitudes pendientes (solo admin)
+  const [pendientes, setPendientes] = useState(0)
+  useEffect(() => {
+    if (!esAdmin) return
+    getCountSolicitudesPendientes()
+      .then(setPendientes)
+      .catch(() => {})
+    // Refresca cada 60 s
+    const interval = setInterval(() => {
+      getCountSolicitudesPendientes().then(setPendientes).catch(() => {})
+    }, 60_000)
+    return () => clearInterval(interval)
+  }, [esAdmin])
 
   // Filtrar items según el rol del usuario
   const allowedPaths = profile
@@ -89,19 +108,36 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
 
       {/* Navegación */}
       <nav className="flex-1 py-4 px-2 space-y-0.5 overflow-y-auto">
-        {navItems.map(({ path, label, icon: Icon, exact }) => (
-          <NavLink
-            key={path}
-            to={path}
-            end={exact}
-            className={navLinkClass}
-            onClick={onMobileClose}
-            title={collapsed ? label : undefined}
-          >
-            <Icon size={18} className="flex-shrink-0" />
-            {!collapsed && <span className="truncate">{label}</span>}
-          </NavLink>
-        ))}
+        {navItems.map(({ path, label, icon: Icon, exact, badge }) => {
+          const showBadge = badge && esAdmin && pendientes > 0
+          return (
+            <NavLink
+              key={path}
+              to={path}
+              end={exact}
+              className={navLinkClass}
+              onClick={onMobileClose}
+              title={collapsed ? label : undefined}
+            >
+              <div className="relative flex-shrink-0">
+                <Icon size={18} />
+                {showBadge && collapsed && (
+                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-amber-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
+                    {pendientes > 9 ? '9+' : pendientes}
+                  </span>
+                )}
+              </div>
+              {!collapsed && (
+                <span className="truncate flex-1">{label}</span>
+              )}
+              {!collapsed && showBadge && (
+                <span className="ml-auto bg-amber-100 text-amber-700 text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0">
+                  {pendientes}
+                </span>
+              )}
+            </NavLink>
+          )
+        })}
       </nav>
 
       {/* Footer */}

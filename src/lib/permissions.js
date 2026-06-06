@@ -35,8 +35,8 @@ const ROUTE_ACCESS = {
     '/transferencias',
     '/reportes',
   ],
-  punto_a: ['/', '/ventas', '/inventario'],
-  punto_b: ['/', '/ventas', '/inventario'],
+  punto_a: ['/', '/ventas', '/inventario', '/solicitudes'],
+  punto_b: ['/', '/ventas', '/inventario', '/solicitudes'],
 }
 
 /**
@@ -58,10 +58,10 @@ export function canAccess(rol, pathname) {
  * Cada entrada es una de las rutas base definidas en NAV_ALL_ITEMS.
  */
 export const NAV_PATHS_POR_ROL = {
-  admin: ['/', '/proveedores', '/viajes', '/inventario', '/productos', '/ventas', '/transferencias', '/reportes', '/usuarios'],
+  admin: ['/', '/proveedores', '/viajes', '/inventario', '/productos', '/ventas', '/transferencias', '/reportes', '/usuarios', '/solicitudes'],
   compras: ['/', '/proveedores', '/viajes', '/inventario', '/productos', '/transferencias', '/reportes'],
-  punto_a: ['/', '/ventas', '/inventario'],
-  punto_b: ['/', '/ventas', '/inventario'],
+  punto_a: ['/', '/ventas', '/inventario', '/solicitudes'],
+  punto_b: ['/', '/ventas', '/inventario', '/solicitudes'],
 }
 
 /**

@@ -36,6 +36,11 @@ import Transferencias from './pages/Transferencias'
 import Reportes      from './pages/Reportes'
 import Usuarios      from './pages/Usuarios'
 
+// Solicitudes de reabastecimiento
+import Solicitudes       from './pages/Solicitudes'
+import SolicitudNueva    from './pages/SolicitudNueva'
+import SolicitudDetalle  from './pages/SolicitudDetalle'
+
 const toastOptions = {
   duration: 3500,
   style: {
@@ -94,6 +99,11 @@ export default function App() {
 
             {/* Usuarios (solo admin — el ProtectedRoute verifica el rol en la ruta) */}
             <Route path="usuarios" element={<Usuarios />} />
+
+            {/* Solicitudes de reabastecimiento */}
+            <Route path="solicitudes"          element={<Solicitudes />} />
+            <Route path="solicitudes/nueva"    element={<SolicitudNueva />} />
+            <Route path="solicitudes/:id"      element={<SolicitudDetalle />} />
           </Route>
 
           {/* Cualquier ruta desconocida → inicio */}

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Package, Receipt, TrendingUp, AlertTriangle,
-  ShoppingCart, RefreshCw, ArrowRight, Truck,
+  ShoppingCart, RefreshCw, ArrowRight, Truck, ClipboardList,
 } from 'lucide-react'
 import {
   Chart as ChartJS,
@@ -17,7 +17,9 @@ import {
   getUltimosViajes,
   getCountAlertas,
 } from '../lib/reportes'
+import { getCountSolicitudesPendientes } from '../lib/solicitudes'
 import AlertasInventario from '../components/inventario/AlertasInventario'
+import { useAuth } from '../context/AuthContext'
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend)
 
@@ -208,29 +210,36 @@ function UltimosViajes({ viajes, loading, onVerTodos }) {
 
 /* ─── Dashboard principal ────────────────────────────────────────── */
 export default function Dashboard() {
-  const navigate = useNavigate()
+  const navigate    = useNavigate()
+  const { profile } = useAuth()
+  const esAdmin     = profile?.rol === 'admin'
 
-  const [loading,     setLoading]     = useState(true)
-  const [ventasHoy,   setVentasHoy]   = useState(null)
-  const [ventas7d,    setVentas7d]    = useState([])
-  const [viajes,      setViajes]      = useState([])
-  const [numAlertas,  setNumAlertas]  = useState(0)
+  const [loading,            setLoading]            = useState(true)
+  const [ventasHoy,          setVentasHoy]          = useState(null)
+  const [ventas7d,           setVentas7d]           = useState([])
+  const [viajes,             setViajes]             = useState([])
+  const [numAlertas,         setNumAlertas]         = useState(0)
+  const [solicitudesPend,    setSolicitudesPend]    = useState(0)
 
   useEffect(() => { cargar() }, [])
 
   async function cargar() {
     setLoading(true)
     try {
-      const [vh, v7, vj, na] = await Promise.all([
+      const promesas = [
         getVentasHoyPorPunto(),
         getVentas7Dias(),
         getUltimosViajes(5),
         getCountAlertas(),
-      ])
+      ]
+      if (esAdmin) promesas.push(getCountSolicitudesPendientes())
+
+      const [vh, v7, vj, na, sp] = await Promise.all(promesas)
       setVentasHoy(vh)
       setVentas7d(v7)
       setViajes(vj)
       setNumAlertas(na)
+      if (sp != null) setSolicitudesPend(sp)
     } catch (err) {
       console.error('Dashboard error:', err)
     } finally {
@@ -304,6 +313,25 @@ export default function Dashboard() {
           <MetricCard key={t.label} {...t} />
         ))}
       </div>
+
+      {/* ── Banner solicitudes pendientes (solo admin) ── */}
+      {esAdmin && solicitudesPend > 0 && (
+        <button
+          onClick={() => navigate('/solicitudes')}
+          className="w-full flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 hover:bg-amber-100 transition-colors text-left"
+        >
+          <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0">
+            <ClipboardList size={16} className="text-amber-600" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-amber-800">
+              {solicitudesPend} solicitud{solicitudesPend !== 1 ? 'es' : ''} de reabastecimiento pendiente{solicitudesPend !== 1 ? 's' : ''}
+            </p>
+            <p className="text-xs text-amber-600 mt-0.5">Un punto de venta necesita productos — toca para revisar</p>
+          </div>
+          <ArrowRight size={16} className="text-amber-500 flex-shrink-0" />
+        </button>
+      )}
 
       {/* ── Gráfica + Alertas ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
