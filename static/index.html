@@ -233,12 +233,6 @@ canvas{max-width:100%}
     <h1>La Pastora</h1>
     <p>Selecciona tu perfil para entrar</p>
     <div class="user-cards" id="user-cards"></div>
-    <p style="font-size:11px;color:var(--muted);margin-top:12px">Demo — sin contraseña</p>
-    <div style="margin-top:20px;padding-top:18px;border-top:1px solid var(--line)">
-      <button onclick="resetApp()" style="background:none;border:1px solid rgba(168,61,52,.35);border-radius:var(--radius);color:var(--danger);font-size:12px;font-weight:600;padding:7px 16px;cursor:pointer;transition:background .12s" onmouseover="this.style.background='rgba(168,61,52,.06)'" onmouseout="this.style.background='none'">
-        🗑️ Borrar datos y empezar de cero
-      </button>
-    </div>
   </div>
 </div>
 
@@ -289,7 +283,7 @@ canvas{max-width:100%}
   <div id="ventas-content" style="display:none">
     <div class="tabs">
       <div class="tab is-active" onclick="switchTab('ventas','nueva',this)">Nueva venta</div>
-      <div class="tab" onclick="switchTab('ventas','historial',this)">Historial del día</div>
+      <div class="tab" id="tab-ventas-historial" onclick="switchTab('ventas','historial',this)">Historial del día</div>
       <div class="tab" onclick="switchTab('ventas','cierre',this)">Cerrar día</div>
     </div>
     <div id="ventas-tab-nueva" class="tab-content is-active">
@@ -349,7 +343,7 @@ canvas{max-width:100%}
 <div id="page-inventario" class="page">
   <div class="tabs">
     <div class="tab is-active" onclick="switchTab('inventario','actual',this)">Stock actual</div>
-    <div class="tab" onclick="switchTab('inventario','movimientos',this)">Movimientos</div>
+    <div class="tab" id="tab-inv-movimientos" onclick="switchTab('inventario','movimientos',this)">Movimientos</div>
     <div class="tab" onclick="switchTab('inventario','ajuste',this)" id="tab-ajuste-inv">Ajuste manual</div>
   </div>
   <div id="inventario-tab-actual" class="tab-content is-active">
@@ -682,16 +676,110 @@ canvas{max-width:100%}
   </div>
 </div>
 
+<!-- ══════════════════════ USUARIOS (admin) ══════════════════════ -->
+<div id="page-usuarios" class="page">
+  <div class="section-head" style="margin-bottom:16px">
+    <h3>Gestión de usuarios</h3>
+    <button class="primary-button" onclick="abrirModalUsuario(null)">+ Nuevo usuario</button>
+  </div>
+  <div class="grid g2 mb18">
+    <div class="panel">
+      <h4 style="font-size:13px;font-weight:700;margin-bottom:14px">🎯 Metas diarias de venta</h4>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Los vendedores verán su progreso hacia esta meta en lugar de los totales.</p>
+      <div class="form-group mb10">
+        <label>Meta diaria — Tienda Centro ($)</label>
+        <input type="number" id="meta-s1" placeholder="Ej. 5000" min="0" step="100">
+      </div>
+      <div class="form-group mb10">
+        <label>Meta diaria — Tienda Norte ($)</label>
+        <input type="number" id="meta-s2" placeholder="Ej. 3000" min="0" step="100">
+      </div>
+      <button class="primary-button" onclick="guardarMetas()" style="width:100%;margin-top:6px">Guardar metas</button>
+    </div>
+    <div class="panel" id="usuarios-list-wrap">
+      <h4 style="font-size:13px;font-weight:700;margin-bottom:14px">👥 Usuarios</h4>
+      <div id="usuarios-list"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: crear/editar usuario -->
+<div class="modal" id="modal-usuario">
+  <div class="modal-box" style="max-width:400px">
+    <div class="modal-head"><h3 id="modal-usuario-title">Nuevo usuario</h3><button onclick="cerrarModal('modal-usuario')" class="close-btn">✕</button></div>
+    <div class="modal-body">
+      <div class="form-group mb12">
+        <label>Nombre</label>
+        <input type="text" id="uu-name" placeholder="Nombre del usuario">
+      </div>
+      <div class="form-group mb12">
+        <label>Rol</label>
+        <select id="uu-role" onchange="toggleStoreField()">
+          <option value="user">Vendedor</option>
+          <option value="admin">Administrador</option>
+        </select>
+      </div>
+      <div class="form-group mb12" id="uu-store-wrap">
+        <label>Tienda asignada</label>
+        <select id="uu-store">
+          <option value="s1">Tienda Centro</option>
+          <option value="s2">Tienda Norte</option>
+        </select>
+      </div>
+      <div class="form-group mb12">
+        <label>Avatar (emoji)</label>
+        <input type="text" id="uu-avatar" placeholder="👤" maxlength="4">
+      </div>
+      <div class="form-group mb12">
+        <label id="uu-pwd-label">Contraseña</label>
+        <input type="password" id="uu-password" placeholder="Contraseña" autocomplete="new-password">
+        <small id="uu-pwd-hint" style="color:var(--muted);font-size:11px"></small>
+      </div>
+      <div class="form-group mb12" style="display:flex;align-items:center;gap:10px">
+        <input type="checkbox" id="uu-activo" checked style="width:auto;margin:0">
+        <label for="uu-activo" style="margin:0;font-weight:400">Usuario activo</label>
+      </div>
+      <input type="hidden" id="uu-id">
+    </div>
+    <div class="modal-foot">
+      <button class="ghost-button" onclick="cerrarModal('modal-usuario')">Cancelar</button>
+      <button class="primary-button" onclick="guardarUsuario()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: contraseña de login -->
+<div class="modal" id="modal-pwd">
+  <div class="modal-box" style="max-width:340px;text-align:center">
+    <div style="font-size:48px;margin-bottom:8px" id="pwd-avatar">👤</div>
+    <h3 style="font-size:18px;font-weight:800;margin-bottom:4px" id="pwd-name"></h3>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:20px" id="pwd-role-label"></p>
+    <div class="form-group mb12" style="text-align:left">
+      <label>Contraseña</label>
+      <input type="password" id="pwd-input" placeholder="Ingresa tu contraseña" autocomplete="current-password"
+             onkeydown="if(event.key==='Enter')confirmarPassword()">
+    </div>
+    <div id="pwd-error" style="display:none;color:var(--danger);font-size:12px;margin-bottom:10px;padding:7px 10px;background:rgba(168,61,52,.08);border-radius:6px">
+      ❌ Contraseña incorrecta
+    </div>
+    <div style="display:flex;gap:10px;margin-top:4px">
+      <button class="ghost-button" style="flex:1" onclick="cerrarModal('modal-pwd')">Cancelar</button>
+      <button class="primary-button" style="flex:1" onclick="confirmarPassword()">Entrar</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══ TOAST ══ -->
 <div class="toast" id="toast"></div>
 <script>
 // ═══════════════════════════════════════════════
 //  DATA — usuarios, tiendas, catálogos
 // ═══════════════════════════════════════════════
-const DEMO_USERS = [
-  { id:'u1', name:'Carlos', role:'admin', avatar:'👨‍💼', storeId:null },
-  { id:'u2', name:'María', role:'user', avatar:'👩‍🍳', storeId:'s1' },
-  { id:'u3', name:'Juan', role:'user', avatar:'👨‍🍳', storeId:'s2' },
+// Usuarios y metas — se cargan de lp_data (ya no son constantes hardcodeadas)
+const DEFAULT_USERS = [
+  { id:'u1', name:'Admin', role:'admin', avatar:'👨‍💼', storeId:null, password:'admin123', activo:true },
+  { id:'u2', name:'María', role:'user', avatar:'👩‍🍳', storeId:'s1', password:'pastora123', activo:true },
+  { id:'u3', name:'Juan', role:'user', avatar:'👨‍🍳', storeId:'s2', password:'pastora123', activo:true },
 ];
 const STORES = [
   { id:'central', name:'Almacén Central', short:'Central', color:'var(--rind)' },
@@ -727,9 +815,11 @@ let movimientos = [];
 let cajaLog = []; // closed cajas history
 let cajaActiva = { s1:null, s2:null }; // {storeId: {abierta:timestamp, userId, snapInv}}
 let proveedores = []; // {id,name,tipo,tel,contacto,prod,ciudad,notas,activo,creado}
+let usuarios = []; // {id,name,role,avatar,storeId,password,activo}
+let metas = { s1:{ diaria:0 }, s2:{ diaria:0 } }; // metas diarias de venta por tienda
 
 function saveData(){
-  const d={products,categories,inventory,sales,purchases,mermaList,traslados,movimientos,cajaLog,cajaActiva,proveedores};
+  const d={products,categories,inventory,sales,purchases,mermaList,traslados,movimientos,cajaLog,cajaActiva,proveedores,usuarios,metas};
   try{localStorage.setItem('lp_data',JSON.stringify(d));}catch(e){}
   if(!applyingRemote) schedulePush();   // ← sincroniza con la nube (otras tiendas)
 }
@@ -750,6 +840,8 @@ function loadData(){
     cajaLog=d.cajaLog||[];
     cajaActiva=d.cajaActiva||{s1:null,s2:null};
     proveedores=d.proveedores||[];
+    usuarios=d.usuarios&&d.usuarios.length?d.usuarios:[...DEFAULT_USERS];
+    metas=d.metas||{s1:{diaria:0},s2:{diaria:0}};
     // no fallback to demo data — keep whatever was saved (even empty)
   }catch(e){initEmpty();}
 }
@@ -757,6 +849,7 @@ function initEmpty(){
   products=[]; categories=['Quesos frescos','Quesos maduros','Cremas','Otros derivados'];
   inventory={central:{},s1:{},s2:{}}; sales=[]; purchases=[]; mermaList=[]; traslados=[];
   movimientos=[]; cajaLog=[]; cajaActiva={s1:null,s2:null}; proveedores=[];
+  usuarios=[...DEFAULT_USERS]; metas={s1:{diaria:0},s2:{diaria:0}};
   saveData();
 }
 function initDemoData(){
@@ -865,9 +958,9 @@ function showToast(msg,type=''){
 // ═══════════════════════════════════════════════
 function renderLogin(){
   const c=$('user-cards'); c.innerHTML='';
-  DEMO_USERS.forEach(u=>{
+  usuarios.filter(u=>u.activo).forEach(u=>{
     const store=u.storeId?STORES.find(s=>s.id===u.storeId):null;
-    c.innerHTML+=`<div class="user-card${u.role==='admin'?' admin-card':''}" onclick="loginAs('${u.id}')">
+    c.innerHTML+=`<div class="user-card${u.role==='admin'?' admin-card':''}" onclick="pedirPassword('${u.id}')">
       <div class="avatar">${u.avatar}</div>
       <div class="uname">${u.name}</div>
       <div class="urole">${u.role==='admin'?'Administrador':'Vendedor'}</div>
@@ -875,8 +968,33 @@ function renderLogin(){
     </div>`;
   });
 }
+let _loginUserId = null;
+function pedirPassword(userId){
+  const u=usuarios.find(x=>x.id===userId);
+  if(!u) return;
+  _loginUserId=userId;
+  $('pwd-avatar').textContent=u.avatar;
+  $('pwd-name').textContent=u.name;
+  $('pwd-role-label').textContent=u.role==='admin'?'Administrador':'Vendedor — '+storeName(u.storeId||'s1');
+  $('pwd-input').value='';
+  $('pwd-error').style.display='none';
+  $('modal-pwd').classList.add('is-open');
+  setTimeout(()=>$('pwd-input').focus(),150);
+}
+function confirmarPassword(){
+  const u=usuarios.find(x=>x.id===_loginUserId);
+  if(!u) return;
+  if($('pwd-input').value!==u.password){
+    $('pwd-error').style.display='block';
+    $('pwd-input').value='';
+    $('pwd-input').focus();
+    return;
+  }
+  cerrarModal('modal-pwd');
+  loginAs(u.id);
+}
 function loginAs(userId){
-  state.user=DEMO_USERS.find(u=>u.id===userId);
+  state.user=usuarios.find(u=>u.id===userId);
   state.viewStore=isAdmin()?'all':state.user.storeId;
   $('login-screen').style.display='none';
   $('app').classList.add('is-visible');
@@ -887,6 +1005,7 @@ function logout(){
   state.user=null; state.cart=[];
   $('app').classList.remove('is-visible');
   $('login-screen').style.display='flex';
+  renderLogin();
 }
 
 // ═══════════════════════════════════════════════
@@ -924,6 +1043,10 @@ function renderRail(){
     <nav class="nav-list">
       <button class="nav-button" data-page="productos" onclick="goTo('productos',this)"><span class="nav-icon">🧀</span><span>Productos</span></button>
       <button class="nav-button" data-page="proveedores" onclick="goTo('proveedores',this)"><span class="nav-icon">🚛</span><span>Proveedores</span></button>
+    </nav>
+    <div class="nav-section" style="margin-top:10px">Administración</div>
+    <nav class="nav-list">
+      <button class="nav-button" data-page="usuarios" onclick="goTo('usuarios',this)"><span class="nav-icon">👥</span><span>Usuarios</span></button>
     </nav>`;
   }
   nav+=`<div class="nav-section" style="margin-top:10px">Análisis</div>
@@ -973,7 +1096,7 @@ function setViewStore(v){
 // ═══════════════════════════════════════════════
 //  NAVIGATION
 // ═══════════════════════════════════════════════
-const PAGE_TITLES={dashboard:'Dashboard',ventas:'Ventas',inventario:'Inventario',merma:'Merma',compras:'Compras',traslados:'Traslados',productos:'Productos',proveedores:'Proveedores',reportes:'Reportes'};
+const PAGE_TITLES={dashboard:'Dashboard',ventas:'Ventas',inventario:'Inventario',merma:'Merma',compras:'Compras',traslados:'Traslados',productos:'Productos',proveedores:'Proveedores',reportes:'Reportes',usuarios:'Usuarios'};
 function goTo(page,btn){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('is-active'));
   document.querySelectorAll('.nav-button').forEach(b=>b.classList.remove('is-active'));
@@ -996,6 +1119,7 @@ function refreshPage(){
     case 'productos':renderProductos();break;
     case 'proveedores':renderProveedores();break;
     case 'reportes':renderReportes();break;
+    case 'usuarios':renderUsuarios();break;
   }
 }
 function switchTab(page,tab,el){
@@ -1022,12 +1146,38 @@ function renderDashboard(){
   const mermas=mermaList.filter(m=>!sid||m.storeId===sid);
   const totalMerma=mermas.reduce((a,m)=>a+m.cost,0);
 
-  // KPIs
-  let kpis=`
-    <div class="metric"><div><div class="eyebrow">Ventas hoy</div><div class="metric-value text-copper">${fmt(totalHoy)}</div><small>${todaySales.length} transacciones</small></div><span class="metric-badge badge-up">Hoy</span></div>
-    <div class="metric"><div><div class="eyebrow">Ticket promedio</div><div class="metric-value">${todaySales.length?fmt(totalHoy/todaySales.length):'—'}</div><small>Por venta</small></div></div>
-    <div class="metric"><div><div class="eyebrow">Ventas del mes</div><div class="metric-value text-ok">${fmt(totalMes)}</div><small>${storeSales.length} ventas</small></div></div>
-    <div class="metric"><div><div class="eyebrow">Merma registrada</div><div class="metric-value text-warn">${fmt(totalMerma)}</div><small>${mermas.length} registros</small></div><span class="metric-badge badge-warn">⚠ Revisar</span></div>`;
+  // KPIs — diferente para admin vs usuario
+  let kpis='';
+  if(isAdmin()){
+    kpis=`
+      <div class="metric"><div><div class="eyebrow">Ventas hoy</div><div class="metric-value text-copper">${fmt(totalHoy)}</div><small>${todaySales.length} transacciones</small></div><span class="metric-badge badge-up">Hoy</span></div>
+      <div class="metric"><div><div class="eyebrow">Ticket promedio</div><div class="metric-value">${todaySales.length?fmt(totalHoy/todaySales.length):'—'}</div><small>Por venta</small></div></div>
+      <div class="metric"><div><div class="eyebrow">Ventas del mes</div><div class="metric-value text-ok">${fmt(totalMes)}</div><small>${storeSales.length} ventas</small></div></div>
+      <div class="metric"><div><div class="eyebrow">Merma registrada</div><div class="metric-value text-warn">${fmt(totalMerma)}</div><small>${mermas.length} registros</small></div><span class="metric-badge badge-warn">⚠ Revisar</span></div>`;
+  } else {
+    // Vista usuario: mostrar meta del día (sin montos)
+    const userStore=getUserStore();
+    const metaDiaria=(metas[userStore]?.diaria)||0;
+    const pct=metaDiaria>0?Math.min(Math.round(totalHoy/metaDiaria*100),100):0;
+    const colorMeta=pct>=100?'var(--ok)':pct>=60?'var(--warn)':'var(--s1)';
+    const emoji=pct>=100?'🎉':pct>=60?'💪':'🏃';
+    const metaLabel=metaDiaria>0?`${pct}% de la meta`:'Sin meta definida';
+    kpis=`
+      <div class="metric" style="grid-column:1/-1;max-width:480px">
+        <div style="width:100%">
+          <div class="eyebrow">🎯 Meta del día — ${storeName(userStore)}</div>
+          <div style="display:flex;align-items:baseline;gap:8px;margin:6px 0 4px">
+            <div class="metric-value" style="color:${colorMeta}">${emoji} ${metaLabel}</div>
+          </div>
+          <div style="height:12px;background:rgba(0,0,0,.08);border-radius:6px;overflow:hidden;margin-bottom:6px">
+            <div style="height:100%;width:${pct}%;background:${colorMeta};border-radius:6px;transition:width .5s"></div>
+          </div>
+          <small style="color:var(--muted)">${todaySales.length} venta(s) registrada(s) hoy${metaDiaria===0?' · El admin aún no ha definido la meta':pct>=100?' · ¡Meta alcanzada!':''}</small>
+        </div>
+      </div>
+      <div class="metric"><div><div class="eyebrow">Ventas hoy</div><div class="metric-value">${todaySales.length}</div><small>Transacciones</small></div></div>
+      <div class="metric"><div><div class="eyebrow">Merma registrada</div><div class="metric-value text-warn">${totalMerma>0?mermas.length+' reg.':'—'}</div><small>${mermas.length} registros</small></div></div>`;
+  }
   $('dash-metrics').innerHTML=kpis;
 
   // Store compare (admin, all)
@@ -1057,8 +1207,10 @@ function renderDashboard(){
     </div>`;
   } else { comp.style.display='none'; }
 
-  // Ventas chart
-  renderVentasChart(sid);
+  // Ventas chart (solo admin)
+  const chartWrap=$('chartVentas')?.parentElement?.parentElement;
+  if(chartWrap) chartWrap.style.display=isAdmin()?'':'none';
+  if(isAdmin()) renderVentasChart(sid);
 
   // Inventario crítico
   const critHTML=products.map(p=>{
@@ -1069,15 +1221,19 @@ function renderDashboard(){
   }).join('');
   $('dash-inv-critico').innerHTML=critHTML||`<div class="empty-state"><div class="icon">✅</div><p>Inventario en niveles normales</p></div>`;
 
-  // Últimas ventas
-  const lastSales=[...storeSales].sort((a,b)=>new Date(b.fecha)-new Date(a.fecha)).slice(0,6);
-  $('dash-ventas').innerHTML=lastSales.map(v=>`<tr>
-    <td>${v.hora||formatHora(v.fecha)}</td>
-    <td><span class="chip ${v.storeId}">${storeShort(v.storeId)}</span></td>
-    <td>${v.items.map(i=>i.name).join(', ')}</td>
-    <td><span class="chip">${v.pago}</span></td>
-    <td class="text-copper">${fmt(v.total)}</td>
-  </tr>`).join('')||'<tr><td colspan="5" class="text-muted" style="text-align:center;padding:20px">Sin ventas aún</td></tr>';
+  // Últimas ventas (solo admin)
+  const ventasWrap=$('dash-ventas')?.closest('.panel');
+  if(ventasWrap) ventasWrap.style.display=isAdmin()?'':'none';
+  if(isAdmin()){
+    const lastSales=[...storeSales].sort((a,b)=>new Date(b.fecha)-new Date(a.fecha)).slice(0,6);
+    $('dash-ventas').innerHTML=lastSales.map(v=>`<tr>
+      <td>${v.hora||formatHora(v.fecha)}</td>
+      <td><span class="chip ${v.storeId}">${storeShort(v.storeId)}</span></td>
+      <td>${v.items.map(i=>i.name).join(', ')}</td>
+      <td><span class="chip">${v.pago}</span></td>
+      <td class="text-copper">${fmt(v.total)}</td>
+    </tr>`).join('')||'<tr><td colspan="5" class="text-muted" style="text-align:center;padding:20px">Sin ventas aún</td></tr>';
+  }
 
   // Alertas
   const alerts=[];
@@ -1227,6 +1383,9 @@ function getVentasDia(sid){
 // ═══════════════════════════════════════════════
 function renderVentas(){
   const sid=isAdmin()?'s1':getUserStore();
+  // Ocultar historial a usuarios no-admin
+  const tabHist=$('tab-ventas-historial');
+  if(tabHist) tabHist.style.display=isAdmin()?'':'none';
   renderCajaWall();
   // caja indicator
   const cc=$('cierre-preview');
@@ -1409,6 +1568,9 @@ function renderInventario(){
       <option value="s2"${cur==='s2'?' selected':''}>Norte</option>
     </select>`;
   } else { filt.innerHTML=''; }
+  // Ocultar movimientos a usuarios no-admin
+  const tabMov=$('tab-inv-movimientos');
+  if(tabMov) tabMov.style.display=isAdmin()?'':'none';
   renderInvTable(sid||'');
   renderMovTable(sid);
   renderAjusteProductos();
@@ -1489,7 +1651,7 @@ function renderMovTable(sid){
   }
   t.innerHTML=rows.map(m=>{
     const p=getProduct(m.productId);
-    const user=DEMO_USERS.find(u=>u.id===m.userId)?.name||m.userId;
+    const user=usuarios.find(u=>u.id===m.userId)?.name||m.userId;
     let tipoCell, flowCell;
     if(m.motivo==='Traslado'&&trasById[m.ref]){
       const tr=trasById[m.ref];
@@ -1838,7 +2000,7 @@ function renderTrasladosTable(){
   const t=$('traslados-table'); if(!t) return;
   t.innerHTML=[...traslados].sort((a,b)=>b.fecha.localeCompare(a.fecha)).map(tr=>{
     const p=getProduct(tr.productId);
-    const u=DEMO_USERS.find(u=>u.id===tr.userId);
+    const u=usuarios.find(u=>u.id===tr.userId);
     return `<tr>
       <td style="font-size:12px">${tr.fecha}</td>
       <td>${p?.name||tr.productId}</td>
@@ -2333,6 +2495,90 @@ function cerrarModal(id){const m=$(id);if(m)m.classList.remove('is-open');}
 document.addEventListener('click',e=>{if(e.target.classList.contains('modal-overlay'))e.target.classList.remove('is-open');});
 
 // ═══════════════════════════════════════════════
+//  USUARIOS (admin)
+// ═══════════════════════════════════════════════
+function renderUsuarios(){
+  // Rellenar metas
+  $('meta-s1').value=metas.s1?.diaria||0;
+  $('meta-s2').value=metas.s2?.diaria||0;
+  // Lista de usuarios
+  const el=$('usuarios-list'); if(!el) return;
+  el.innerHTML=usuarios.length?usuarios.map(u=>{
+    const store=u.storeId?STORES.find(s=>s.id===u.storeId):null;
+    return `<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)">
+      <div style="font-size:28px">${u.avatar}</div>
+      <div style="flex:1">
+        <div style="font-weight:700;font-size:14px">${u.name} ${!u.activo?'<span style="font-size:11px;color:var(--muted)">(inactivo)</span>':''}</div>
+        <div style="font-size:12px;color:var(--muted)">${u.role==='admin'?'Administrador':'Vendedor'+(store?' — '+store.name:'')}</div>
+      </div>
+      <button class="tiny-button" onclick="abrirModalUsuario('${u.id}')">Editar</button>
+      ${u.role!=='admin'||usuarios.filter(x=>x.role==='admin').length>1?`<button class="tiny-button" style="color:var(--danger);border-color:rgba(168,61,52,.35)" onclick="eliminarUsuario('${u.id}')">Eliminar</button>`:''}
+    </div>`;
+  }).join(''):'<div class="empty-state"><div class="icon">👥</div><p>Sin usuarios</p></div>';
+}
+function abrirModalUsuario(userId){
+  const u=userId?usuarios.find(x=>x.id===userId):null;
+  $('modal-usuario-title').textContent=u?'Editar usuario':'Nuevo usuario';
+  $('uu-id').value=u?u.id:'';
+  $('uu-name').value=u?u.name:'';
+  $('uu-role').value=u?u.role:'user';
+  $('uu-avatar').value=u?u.avatar:'👤';
+  $('uu-store').value=u?u.storeId||'s1':'s1';
+  $('uu-password').value='';
+  $('uu-activo').checked=u?u.activo:true;
+  $('uu-pwd-hint').textContent=u?'Dejar en blanco para no cambiar la contraseña':'';
+  $('uu-pwd-label').textContent=u?'Nueva contraseña (opcional)':'Contraseña';
+  toggleStoreField();
+  $('modal-usuario').classList.add('is-open');
+}
+function toggleStoreField(){
+  const role=$('uu-role').value;
+  const wrap=$('uu-store-wrap');
+  if(wrap) wrap.style.display=role==='admin'?'none':'';
+}
+function guardarUsuario(){
+  const id=$('uu-id').value||('u'+Date.now());
+  const name=$('uu-name').value.trim();
+  const role=$('uu-role').value;
+  const storeId=role==='admin'?null:$('uu-store').value;
+  const avatar=$('uu-avatar').value.trim()||'👤';
+  const newPwd=$('uu-password').value;
+  const activo=$('uu-activo').checked;
+  if(!name){showToast('El nombre es requerido','warn');return;}
+  const idx=usuarios.findIndex(u=>u.id===id);
+  if(idx>=0){
+    // editar
+    const u=usuarios[idx];
+    u.name=name; u.role=role; u.storeId=storeId; u.avatar=avatar; u.activo=activo;
+    if(newPwd) u.password=newPwd;
+  } else {
+    // crear
+    if(!newPwd){showToast('La contraseña es requerida','warn');return;}
+    usuarios.push({id,name,role,avatar,storeId,password:newPwd,activo});
+  }
+  saveData();
+  cerrarModal('modal-usuario');
+  renderUsuarios();
+  showToast('✅ Usuario guardado');
+}
+function eliminarUsuario(userId){
+  const u=usuarios.find(x=>x.id===userId);
+  if(!u) return;
+  if(!confirm(`¿Eliminar al usuario "${u.name}"? Esta acción no se puede deshacer.`)) return;
+  usuarios=usuarios.filter(x=>x.id!==userId);
+  saveData();
+  renderUsuarios();
+  showToast('Usuario eliminado');
+}
+function guardarMetas(){
+  const s1=parseFloat($('meta-s1').value)||0;
+  const s2=parseFloat($('meta-s2').value)||0;
+  metas={s1:{diaria:s1},s2:{diaria:s2}};
+  saveData();
+  showToast('✅ Metas guardadas');
+}
+
+// ═══════════════════════════════════════════════
 //  RESET UTIL
 // ═══════════════════════════════════════════════
 function resetApp(){
@@ -2392,7 +2638,7 @@ let pushPending = false;
 
 // Reúne todo el estado en un solo objeto (mismo formato que localStorage)
 function collectData(){
-  return {products,categories,inventory,sales,purchases,mermaList,traslados,movimientos,cajaLog,cajaActiva,proveedores};
+  return {products,categories,inventory,sales,purchases,mermaList,traslados,movimientos,cajaLog,cajaActiva,proveedores,usuarios,metas};
 }
 // Vuelca un objeto de datos a las variables globales (reusado por carga local, nube y realtime)
 function applyData(d){
@@ -2409,6 +2655,8 @@ function applyData(d){
   cajaLog     = d.cajaLog     || [];
   cajaActiva  = d.cajaActiva  || {s1:null,s2:null};
   proveedores = d.proveedores || [];
+  usuarios    = d.usuarios&&d.usuarios.length?d.usuarios:[...DEFAULT_USERS];
+  metas       = d.metas       || {s1:{diaria:0},s2:{diaria:0}};
 }
 
 // ── Indicador de estado de conexión (pastilla fija, no intrusiva) ──
