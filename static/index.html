@@ -704,44 +704,45 @@ canvas{max-width:100%}
 </div>
 
 <!-- Modal: crear/editar usuario -->
-<div class="modal" id="modal-usuario">
-  <div class="modal-box" style="max-width:400px">
-    <div class="modal-head"><h3 id="modal-usuario-title">Nuevo usuario</h3><button onclick="cerrarModal('modal-usuario')" class="close-btn">✕</button></div>
-    <div class="modal-body">
-      <div class="form-group mb12">
-        <label>Nombre</label>
-        <input type="text" id="uu-name" placeholder="Nombre del usuario">
-      </div>
-      <div class="form-group mb12">
-        <label>Rol</label>
-        <select id="uu-role" onchange="toggleStoreField()">
-          <option value="user">Vendedor</option>
-          <option value="admin">Administrador</option>
-        </select>
-      </div>
-      <div class="form-group mb12" id="uu-store-wrap">
-        <label>Tienda asignada</label>
-        <select id="uu-store">
-          <option value="s1">Tienda Centro</option>
-          <option value="s2">Tienda Norte</option>
-        </select>
-      </div>
-      <div class="form-group mb12">
-        <label>Avatar (emoji)</label>
-        <input type="text" id="uu-avatar" placeholder="👤" maxlength="4">
-      </div>
-      <div class="form-group mb12">
-        <label id="uu-pwd-label">Contraseña</label>
-        <input type="password" id="uu-password" placeholder="Contraseña" autocomplete="new-password">
-        <small id="uu-pwd-hint" style="color:var(--muted);font-size:11px"></small>
-      </div>
-      <div class="form-group mb12" style="display:flex;align-items:center;gap:10px">
-        <input type="checkbox" id="uu-activo" checked style="width:auto;margin:0">
-        <label for="uu-activo" style="margin:0;font-weight:400">Usuario activo</label>
-      </div>
-      <input type="hidden" id="uu-id">
+<div class="modal-overlay" id="modal-usuario">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-usuario-title">Nuevo usuario</span>
+      <button class="modal-close" onclick="cerrarModal('modal-usuario')">✕</button>
     </div>
-    <div class="modal-foot">
+    <div class="form-group" style="margin-bottom:12px">
+      <label>Nombre</label>
+      <input type="text" id="uu-name" placeholder="Nombre del usuario">
+    </div>
+    <div class="form-group" style="margin-bottom:12px">
+      <label>Rol</label>
+      <select id="uu-role" onchange="toggleStoreField()">
+        <option value="user">Vendedor</option>
+        <option value="admin">Administrador</option>
+      </select>
+    </div>
+    <div class="form-group" id="uu-store-wrap" style="margin-bottom:12px">
+      <label>Tienda asignada</label>
+      <select id="uu-store">
+        <option value="s1">Tienda Centro</option>
+        <option value="s2">Tienda Norte</option>
+      </select>
+    </div>
+    <div class="form-group" style="margin-bottom:12px">
+      <label>Avatar (emoji)</label>
+      <input type="text" id="uu-avatar" placeholder="👤" maxlength="4">
+    </div>
+    <div class="form-group" style="margin-bottom:12px">
+      <label id="uu-pwd-label">Contraseña</label>
+      <input type="password" id="uu-password" placeholder="Contraseña" autocomplete="new-password">
+      <small id="uu-pwd-hint" style="color:var(--muted);font-size:11px;display:block;margin-top:4px"></small>
+    </div>
+    <label style="display:flex;align-items:center;gap:9px;margin-bottom:12px;font-size:13px;cursor:pointer">
+      <input type="checkbox" id="uu-activo" checked style="width:16px;height:16px;cursor:pointer">
+      <span>Usuario activo</span>
+    </label>
+    <input type="hidden" id="uu-id">
+    <div class="modal-footer">
       <button class="ghost-button" onclick="cerrarModal('modal-usuario')">Cancelar</button>
       <button class="primary-button" onclick="guardarUsuario()">Guardar</button>
     </div>
@@ -749,12 +750,12 @@ canvas{max-width:100%}
 </div>
 
 <!-- Modal: contraseña de login -->
-<div class="modal" id="modal-pwd">
-  <div class="modal-box" style="max-width:340px;text-align:center">
-    <div style="font-size:48px;margin-bottom:8px" id="pwd-avatar">👤</div>
-    <h3 style="font-size:18px;font-weight:800;margin-bottom:4px" id="pwd-name"></h3>
-    <p style="font-size:12px;color:var(--muted);margin-bottom:20px" id="pwd-role-label"></p>
-    <div class="form-group mb12" style="text-align:left">
+<div class="modal-overlay" id="modal-pwd">
+  <div class="modal" style="max-width:360px;text-align:center">
+    <div style="font-size:52px;margin-bottom:8px" id="pwd-avatar">👤</div>
+    <div style="font-size:18px;font-weight:800;margin-bottom:4px" id="pwd-name"></div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:20px" id="pwd-role-label"></div>
+    <div class="form-group" style="text-align:left;margin-bottom:10px">
       <label>Contraseña</label>
       <input type="password" id="pwd-input" placeholder="Ingresa tu contraseña" autocomplete="current-password"
              onkeydown="if(event.key==='Enter')confirmarPassword()">
@@ -762,7 +763,7 @@ canvas{max-width:100%}
     <div id="pwd-error" style="display:none;color:var(--danger);font-size:12px;margin-bottom:10px;padding:7px 10px;background:rgba(168,61,52,.08);border-radius:6px">
       ❌ Contraseña incorrecta
     </div>
-    <div style="display:flex;gap:10px;margin-top:4px">
+    <div class="modal-footer" style="justify-content:stretch;gap:10px">
       <button class="ghost-button" style="flex:1" onclick="cerrarModal('modal-pwd')">Cancelar</button>
       <button class="primary-button" style="flex:1" onclick="confirmarPassword()">Entrar</button>
     </div>
