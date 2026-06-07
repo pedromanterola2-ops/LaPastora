@@ -228,6 +228,95 @@ canvas{max-width:100%}
 .summary-box{background:linear-gradient(135deg,rgba(49,72,58,.08),rgba(183,131,61,.06));border:1px solid var(--curd);border-radius:var(--radius);padding:14px}
 .summary-row{display:flex;justify-content:space-between;padding:4px 0;font-size:13px;border-bottom:1px solid rgba(0,0,0,.04)}
 .summary-row:last-child{border-bottom:none;font-weight:800;font-size:15px;margin-top:6px;padding-top:8px}
+
+/* ══ RESPONSIVE / MOBILE ══════════════════════════════════════════ */
+.hamburger{display:none;background:none;border:none;padding:6px 8px;border-radius:var(--radius);font-size:22px;line-height:1;color:var(--ink);flex-shrink:0;cursor:pointer}
+.hamburger:hover{background:var(--whey)}
+#nav-overlay{display:none;position:fixed;inset:0;background:rgba(43,33,26,.45);backdrop-filter:blur(2px);z-index:140;cursor:pointer}
+#nav-overlay.is-open{display:block}
+
+/* ── Tablet ≤900px ── */
+@media(max-width:900px){
+  .rail{width:216px}
+  .g4{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .store-tab{padding:3px 8px;font-size:11px}
+}
+
+/* ── Mobile ≤640px ── */
+@media(max-width:640px){
+  /* Rail → drawer lateral fixed */
+  .rail{
+    position:fixed;left:0;top:0;height:100%;width:260px;
+    z-index:150;transform:translateX(-100%);
+    transition:transform .22s ease;
+    padding:16px 12px;
+  }
+  .rail.is-open{transform:translateX(0);box-shadow:6px 0 28px rgba(43,33,26,.28)}
+
+  /* Topbar */
+  .hamburger{display:block}
+  .topbar{padding:0 10px 0 8px;height:52px;justify-content:flex-start;gap:8px}
+  .topbar div:first-of-type{flex:1;min-width:0}
+  .topbar h2{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .eyebrow{font-size:9px}
+  #store-switcher-wrap{display:none}
+  #topbar-actions{display:none}
+  .caja-status-open,.caja-status-closed{font-size:10px;padding:2px 7px}
+
+  /* Grids → 1 columna */
+  .g4,.g3,.g2,.g21{grid-template-columns:1fr}
+  .form-grid,.form-grid.g3f{grid-template-columns:1fr}
+  .span-2,.span-3{grid-column:span 1}
+
+  /* Traslados store-compare */
+  .store-compare{grid-template-columns:1fr;gap:0}
+  .store-divider{display:none}
+  .traslado-arrow{width:100%;padding:10px 14px}
+
+  /* Login */
+  .user-cards{grid-template-columns:repeat(2,1fr)}
+  .login-box{padding:28px 16px}
+
+  /* Tabs → scroll horizontal sin barra */
+  .tabs{overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .tabs::-webkit-scrollbar{display:none}
+  .tab{white-space:nowrap;flex-shrink:0;padding:8px 12px}
+
+  /* Section head */
+  .section-head{flex-wrap:wrap;gap:8px}
+  .section-head input[type="text"]{width:100%!important;min-width:0}
+
+  /* Content padding */
+  #content{padding:12px}
+
+  /* Inputs — 16px evita auto-zoom en iOS */
+  input,select,textarea{font-size:16px!important;min-height:40px}
+  .qty-input{font-size:14px!important;min-height:32px}
+  .qty-btn{width:32px;height:32px}
+
+  /* Touch targets */
+  .primary-button,.ghost-button,.warn-button,.danger-button{min-height:40px}
+  .nav-button{padding:11px 8px;min-height:44px}
+  .tiny-button{min-height:34px;padding:5px 10px}
+
+  /* Modals → bottom sheet */
+  .modal-overlay{align-items:flex-end;padding:0}
+  .modal,.modal.modal-lg{width:100%;max-width:100%;border-radius:14px 14px 0 0;max-height:92vh;padding:18px 16px}
+
+  /* Toast */
+  .toast{right:10px;left:10px;max-width:none;bottom:10px}
+
+  /* Cloud badge — no tape el toast */
+  #cloud-badge{bottom:60px;right:10px;font-size:11px;padding:4px 9px}
+
+  /* Métricas */
+  .metric-value{font-size:22px}
+  .metric{min-height:88px}
+
+  /* Caja */
+  .caja-time{font-size:26px}
+  .caja-card{padding:16px;max-width:100%}
+}
 </style>
 </head>
 <body>
@@ -244,6 +333,7 @@ canvas{max-width:100%}
 
 <!-- ══ APP ══ -->
 <div id="app">
+  <div id="nav-overlay" onclick="closeMobileNav()"></div>
   <aside class="rail" id="rail">
     <div class="brand">
       <div class="brand-mark">LP</div>
@@ -255,6 +345,7 @@ canvas{max-width:100%}
 
   <div class="main">
     <header class="topbar">
+      <button class="hamburger" onclick="toggleMobileNav()" aria-label="Abrir menú">☰</button>
       <div>
         <p class="eyebrow" id="topbar-eyebrow">Panel</p>
         <h2 id="page-title">Dashboard</h2>
@@ -1161,6 +1252,7 @@ function setViewStore(v){
 // ═══════════════════════════════════════════════
 const PAGE_TITLES={dashboard:'Dashboard',ventas:'Ventas',inventario:'Inventario',merma:'Merma',compras:'Compras',traslados:'Traslados',productos:'Productos',proveedores:'Proveedores',reportes:'Reportes',usuarios:'Usuarios',solicitudes:'Solicitudes de reabastecimiento'};
 function goTo(page,btn){
+  closeMobileNav();
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('is-active'));
   document.querySelectorAll('.nav-button').forEach(b=>b.classList.remove('is-active'));
   const pg=$('page-'+page);
@@ -3056,6 +3148,25 @@ function subscribeRealtime(){
         setCloudBadge('syncing');
       })
     .subscribe((st)=>{ if(st==='SUBSCRIBED') setCloudBadge('online'); });
+}
+
+// ═══════════════════════════════════════════════
+//  MOBILE NAV
+// ═══════════════════════════════════════════════
+function toggleMobileNav(){
+  const rail=$('rail');
+  const ov=$('nav-overlay');
+  if(!rail||!ov) return;
+  const open=rail.classList.toggle('is-open');
+  ov.classList.toggle('is-open',open);
+  document.body.style.overflow=open?'hidden':'';
+}
+function closeMobileNav(){
+  const rail=$('rail');
+  const ov=$('nav-overlay');
+  if(rail) rail.classList.remove('is-open');
+  if(ov) ov.classList.remove('is-open');
+  document.body.style.overflow='';
 }
 
 // ═══════════════════════════════════════════════
