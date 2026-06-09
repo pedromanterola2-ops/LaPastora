@@ -922,49 +922,75 @@ canvas{max-width:100%}
 
 <!-- ══════════════════════ PRECIOS POR TIENDA (admin) ══════════════════════ -->
 <div id="page-precios" class="page">
-  <div class="section-head" style="margin-bottom:6px">
+  <div class="section-head" style="margin-bottom:14px">
     <div>
       <h3>Precios por tienda</h3>
-      <p style="font-size:12px;color:var(--muted);margin-top:3px">Establece precios diferentes para cada tienda. Si se deja en blanco, se usa el precio base del producto.</p>
+      <p style="font-size:12px;color:var(--muted);margin-top:3px">Precios específicos por tienda. Si no hay precio especial, se usa el precio base del producto.</p>
     </div>
-    <button class="primary-button" onclick="guardarPreciosTienda()">💾 Guardar cambios</button>
+    <input type="search" id="precios-buscar" placeholder="Buscar producto…" oninput="renderPrecios(this.value)" style="width:200px;padding:7px 10px;border-radius:var(--radius);border:1px solid var(--line-strong);font-size:13px;font-family:inherit">
   </div>
-  <div class="panel" style="margin-bottom:14px;padding:10px 16px;background:rgba(99,118,91,.06);border-color:rgba(99,118,91,.25)">
-    <div style="font-size:12px;color:var(--herb);font-weight:600">ℹ️ Los precios vacíos o en cero usan el precio base definido en cada producto.</div>
+  <!-- leyenda -->
+  <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+    <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)"><span style="width:10px;height:10px;border-radius:50%;background:var(--curd);display:inline-block"></span>Precio base (sin cambio)</div>
+    <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--s1)"><span style="width:10px;height:10px;border-radius:50%;background:var(--s1);display:inline-block"></span>Precio especial Centro</div>
+    <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--s2)"><span style="width:10px;height:10px;border-radius:50%;background:var(--s2);display:inline-block"></span>Precio especial Norte</div>
   </div>
   <div id="precios-tienda-wrap"></div>
 </div>
 
-<!-- Modal: editar precio individual de tienda -->
+<!-- Modal: editar precio por tienda -->
 <div class="modal-overlay" id="modal-precio-tienda">
-  <div class="modal" style="max-width:420px">
+  <div class="modal" style="max-width:460px">
     <div class="modal-header">
-      <span class="modal-title" id="mpt-title">Precio por tienda</span>
+      <span class="modal-title" id="mpt-title">Precios por tienda</span>
       <button class="modal-close" onclick="cerrarModal('modal-precio-tienda')">✕</button>
     </div>
-    <p id="mpt-prod-name" style="font-weight:700;margin-bottom:14px;font-size:15px"></p>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
-      <div class="form-group">
-        <label>Centro — Precio normal</label>
-        <input type="number" id="mpt-s1-normal" placeholder="Precio base" step="0.01" min="0">
+    <!-- producto info -->
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--inset);border-radius:var(--radius);margin-bottom:16px">
+      <span style="font-size:22px">🧀</span>
+      <div>
+        <div id="mpt-prod-name" style="font-weight:700;font-size:14px"></div>
+        <div id="mpt-base-label" style="font-size:12px;color:var(--muted)"></div>
       </div>
-      <div class="form-group">
-        <label>Centro — Precio mayoreo</label>
-        <input type="number" id="mpt-s1-mayoreo" placeholder="Precio base" step="0.01" min="0">
+    </div>
+    <!-- Centro -->
+    <div style="margin-bottom:14px;border:1px solid rgba(58,111,168,.25);border-radius:var(--radius);overflow:hidden">
+      <div style="background:rgba(58,111,168,.08);padding:8px 12px;display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--s1)">🏪 Tienda Centro</span>
+        <button onclick="limpiarPreciosTienda('s1')" style="background:none;border:none;font-size:11px;color:var(--muted);cursor:pointer;text-decoration:underline">Usar precio base</button>
       </div>
-      <div class="form-group">
-        <label>Norte — Precio normal</label>
-        <input type="number" id="mpt-s2-normal" placeholder="Precio base" step="0.01" min="0">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:12px">
+        <div class="form-group" style="margin-bottom:0">
+          <label style="color:var(--s1)">Precio normal</label>
+          <input type="number" id="mpt-s1-normal" placeholder="—" step="0.01" min="0" inputmode="decimal">
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label style="color:var(--s1)">Precio mayoreo</label>
+          <input type="number" id="mpt-s1-mayoreo" placeholder="—" step="0.01" min="0" inputmode="decimal">
+        </div>
       </div>
-      <div class="form-group">
-        <label>Norte — Precio mayoreo</label>
-        <input type="number" id="mpt-s2-mayoreo" placeholder="Precio base" step="0.01" min="0">
+    </div>
+    <!-- Norte -->
+    <div style="margin-bottom:16px;border:1px solid rgba(122,79,168,.25);border-radius:var(--radius);overflow:hidden">
+      <div style="background:rgba(122,79,168,.08);padding:8px 12px;display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--s2)">🏪 Tienda Norte</span>
+        <button onclick="limpiarPreciosTienda('s2')" style="background:none;border:none;font-size:11px;color:var(--muted);cursor:pointer;text-decoration:underline">Usar precio base</button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:12px">
+        <div class="form-group" style="margin-bottom:0">
+          <label style="color:var(--s2)">Precio normal</label>
+          <input type="number" id="mpt-s2-normal" placeholder="—" step="0.01" min="0" inputmode="decimal">
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label style="color:var(--s2)">Precio mayoreo</label>
+          <input type="number" id="mpt-s2-mayoreo" placeholder="—" step="0.01" min="0" inputmode="decimal">
+        </div>
       </div>
     </div>
     <input type="hidden" id="mpt-prod-id">
     <div class="modal-footer">
       <button class="ghost-button" onclick="cerrarModal('modal-precio-tienda')">Cancelar</button>
-      <button class="primary-button" onclick="guardarPrecioModal()">Guardar</button>
+      <button class="primary-button" onclick="guardarPrecioModal()">💾 Guardar precios</button>
     </div>
   </div>
 </div>
@@ -2611,51 +2637,73 @@ function confirmarEliminarProveedor(id){
 // ═══════════════════════════════════════════════
 //  PRECIOS POR TIENDA
 // ═══════════════════════════════════════════════
-function renderPrecios(){
+function renderPrecios(filter){
   const wrap=$('precios-tienda-wrap'); if(!wrap) return;
-  if(!products.length){
-    wrap.innerHTML='<div class="empty-state"><div class="icon">🏷️</div><p>No hay productos registrados</p></div>';
+  const f=(filter||($('precios-buscar')?.value)||'').toLowerCase();
+  const lista=products.filter(p=>!f||p.name.toLowerCase().includes(f)||p.cat.toLowerCase().includes(f));
+  if(!lista.length){
+    wrap.innerHTML='<div class="empty-state"><div class="icon">🏷️</div><p>'+(f?'Sin resultados':'No hay productos registrados')+'</p></div>';
     return;
   }
-  const storeNames={s1:'Centro',s2:'Norte'};
-  wrap.innerHTML=`<div class="panel" style="padding:0;overflow:hidden">
-    <div class="table-wrap">
-    <table>
-      <thead><tr>
-        <th>Producto</th>
-        <th>Precio base</th>
-        <th>Centro — Normal</th>
-        <th>Centro — Mayoreo</th>
-        <th>Norte — Normal</th>
-        <th>Norte — Mayoreo</th>
-        <th></th>
-      </tr></thead>
-      <tbody>
-        ${products.map(p=>{
-          const s1n=p.storePrices?.s1?.normal||'';
-          const s1m=p.storePrices?.s1?.mayoreo||'';
-          const s2n=p.storePrices?.s2?.normal||'';
-          const s2m=p.storePrices?.s2?.mayoreo||'';
-          const hasOverride=(s1n||s1m||s2n||s2m);
-          return `<tr>
-            <td><strong>${p.name}</strong><div style="font-size:11px;color:var(--muted)">${p.cat}</div></td>
-            <td>${fmt(p.priceNormal)}/${p.unit}</td>
-            <td>${s1n?`<span style="color:var(--herb);font-weight:700">${fmt(s1n)}</span>`:'<span style="color:var(--muted);font-size:11px">—base—</span>'}</td>
-            <td>${s1m?`<span style="color:var(--herb);font-weight:700">${fmt(s1m)}</span>`:'<span style="color:var(--muted);font-size:11px">—base—</span>'}</td>
-            <td>${s2n?`<span style="color:var(--s2);font-weight:700">${fmt(s2n)}</span>`:'<span style="color:var(--muted);font-size:11px">—base—</span>'}</td>
-            <td>${s2m?`<span style="color:var(--s2);font-weight:700">${fmt(s2m)}</span>`:'<span style="color:var(--muted);font-size:11px">—base—</span>'}</td>
-            <td><button class="tiny-button" onclick="abrirModalPrecioTienda('${p.id}')">✏️ Editar</button></td>
-          </tr>`;
-        }).join('')}
-      </tbody>
-    </table>
-    </div>
-  </div>`;
+  // Agrupar por categoría
+  const cats=[...new Set(lista.map(p=>p.cat))];
+  const pricePill=(val,color)=>val
+    ?`<span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:700;background:${color}18;color:${color};border:1px solid ${color}44">${fmt(val)}</span>`
+    :`<span style="font-size:11px;color:var(--muted)">base</span>`;
+  wrap.innerHTML=cats.map(cat=>{
+    const catProds=lista.filter(p=>p.cat===cat);
+    return `<div style="margin-bottom:18px">
+      <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:7px;padding-left:2px">${cat}</div>
+      <div class="panel" style="padding:0;overflow:hidden">
+        <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th style="min-width:160px">Producto</th>
+            <th style="text-align:center;white-space:nowrap">Precio base</th>
+            <th colspan="2" style="text-align:center;background:rgba(58,111,168,.06);border-left:2px solid rgba(58,111,168,.18)"><span style="color:var(--s1);font-size:11px">🏪 Centro</span></th>
+            <th colspan="2" style="text-align:center;background:rgba(122,79,168,.06);border-left:2px solid rgba(122,79,168,.18)"><span style="color:var(--s2);font-size:11px">🏪 Norte</span></th>
+            <th></th>
+          </tr>
+          <tr style="font-size:10px;color:var(--muted)">
+            <th></th><th></th>
+            <th style="background:rgba(58,111,168,.04);border-left:2px solid rgba(58,111,168,.18);font-weight:600">Normal</th>
+            <th style="background:rgba(58,111,168,.04);font-weight:600">Mayoreo</th>
+            <th style="background:rgba(122,79,168,.04);border-left:2px solid rgba(122,79,168,.18);font-weight:600">Normal</th>
+            <th style="background:rgba(122,79,168,.04);font-weight:600">Mayoreo</th>
+            <th></th>
+          </tr></thead>
+          <tbody>
+            ${catProds.map(p=>{
+              const s1n=p.storePrices?.s1?.normal||null;
+              const s1m=p.storePrices?.s1?.mayoreo||null;
+              const s2n=p.storePrices?.s2?.normal||null;
+              const s2m=p.storePrices?.s2?.mayoreo||null;
+              const hasAny=s1n||s1m||s2n||s2m;
+              return `<tr style="${hasAny?'background:rgba(255,253,247,.6)':''}">
+                <td>
+                  <div style="font-weight:600;font-size:13px">${p.name}</div>
+                  ${hasAny?`<span style="font-size:10px;padding:1px 6px;border-radius:999px;background:rgba(77,122,72,.1);color:var(--ok);font-weight:700">precios especiales</span>`:''}
+                </td>
+                <td style="text-align:center;color:var(--muted);font-size:12px">${fmt(p.priceNormal)}<span style="opacity:.6">/${p.unit}</span></td>
+                <td style="text-align:center;background:rgba(58,111,168,.03);border-left:2px solid rgba(58,111,168,.12)">${pricePill(s1n,'var(--s1)')}</td>
+                <td style="text-align:center;background:rgba(58,111,168,.03)">${pricePill(s1m,'var(--s1)')}</td>
+                <td style="text-align:center;background:rgba(122,79,168,.03);border-left:2px solid rgba(122,79,168,.12)">${pricePill(s2n,'var(--s2)')}</td>
+                <td style="text-align:center;background:rgba(122,79,168,.03)">${pricePill(s2m,'var(--s2)')}</td>
+                <td><button class="tiny-button" onclick="abrirModalPrecioTienda('${p.id}')">✏️ Editar</button></td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
 }
 function abrirModalPrecioTienda(productId){
   const p=getProduct(productId); if(!p) return;
-  $('mpt-title').textContent='Precios — '+p.name;
-  $('mpt-prod-name').textContent=`${p.name} · Precio base: ${fmt(p.priceNormal)}/${p.unit}`;
+  $('mpt-title').textContent='🏷️ '+p.name;
+  $('mpt-prod-name').textContent=p.name;
+  $('mpt-base-label').textContent=`Precio base: ${fmt(p.priceNormal)} / ${p.unit}  ·  Mayoreo base: ${fmt(p.priceMayoreo)}`;
   $('mpt-prod-id').value=productId;
   $('mpt-s1-normal').value=p.storePrices?.s1?.normal||'';
   $('mpt-s1-mayoreo').value=p.storePrices?.s1?.mayoreo||'';
@@ -2663,25 +2711,23 @@ function abrirModalPrecioTienda(productId){
   $('mpt-s2-mayoreo').value=p.storePrices?.s2?.mayoreo||'';
   abrirModal('modal-precio-tienda');
 }
+function limpiarPreciosTienda(storeId){
+  $(`mpt-${storeId}-normal`).value='';
+  $(`mpt-${storeId}-mayoreo`).value='';
+}
 function guardarPrecioModal(){
   const productId=$('mpt-prod-id').value;
   const p=getProduct(productId); if(!p) return;
   if(!p.storePrices) p.storePrices={};
-  const s1n=parseFloat($('mpt-s1-normal').value)||0;
-  const s1m=parseFloat($('mpt-s1-mayoreo').value)||0;
-  const s2n=parseFloat($('mpt-s2-normal').value)||0;
-  const s2m=parseFloat($('mpt-s2-mayoreo').value)||0;
-  p.storePrices.s1={normal:s1n||null,mayoreo:s1m||null};
-  p.storePrices.s2={normal:s2n||null,mayoreo:s2m||null};
+  const v=id=>{ const n=parseFloat($(`mpt-${id}`).value); return (isNaN(n)||n<=0)?null:n; };
+  p.storePrices.s1={normal:v('s1-normal'),mayoreo:v('s1-mayoreo')};
+  p.storePrices.s2={normal:v('s2-normal'),mayoreo:v('s2-mayoreo')};
   saveData();
   cerrarModal('modal-precio-tienda');
   renderPrecios();
-  showToast('✅ Precios actualizados — '+p.name);
+  showToast('✅ Precios guardados — '+p.name);
 }
-function guardarPreciosTienda(){
-  saveData();
-  showToast('✅ Cambios guardados');
-}
+function guardarPreciosTienda(){saveData();showToast('✅ Guardado');}
 
 // ═══════════════════════════════════════════════
 //  REPORTES
