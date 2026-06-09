@@ -648,7 +648,7 @@ canvas{max-width:100%}
 <div id="page-reportes" class="page">
   <div class="tabs">
     <div class="tab is-active" onclick="switchTab('reportes','ventas',this)">Ventas</div>
-    <div class="tab" onclick="switchTab('reportes','margen',this)">Márgenes</div>
+    <div class="tab" id="tab-reportes-margen" onclick="switchTab('reportes','margen',this)">Márgenes</div>
     <div class="tab" onclick="switchTab('reportes','merma',this)">Merma</div>
     <div class="tab" onclick="switchTab('reportes','comparativa',this)" id="tab-comparativa">Comparativa tiendas</div>
   </div>
@@ -920,6 +920,55 @@ canvas{max-width:100%}
   </div>
 </div>
 
+<!-- ══════════════════════ PRECIOS POR TIENDA (admin) ══════════════════════ -->
+<div id="page-precios" class="page">
+  <div class="section-head" style="margin-bottom:6px">
+    <div>
+      <h3>Precios por tienda</h3>
+      <p style="font-size:12px;color:var(--muted);margin-top:3px">Establece precios diferentes para cada tienda. Si se deja en blanco, se usa el precio base del producto.</p>
+    </div>
+    <button class="primary-button" onclick="guardarPreciosTienda()">💾 Guardar cambios</button>
+  </div>
+  <div class="panel" style="margin-bottom:14px;padding:10px 16px;background:rgba(99,118,91,.06);border-color:rgba(99,118,91,.25)">
+    <div style="font-size:12px;color:var(--herb);font-weight:600">ℹ️ Los precios vacíos o en cero usan el precio base definido en cada producto.</div>
+  </div>
+  <div id="precios-tienda-wrap"></div>
+</div>
+
+<!-- Modal: editar precio individual de tienda -->
+<div class="modal-overlay" id="modal-precio-tienda">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <span class="modal-title" id="mpt-title">Precio por tienda</span>
+      <button class="modal-close" onclick="cerrarModal('modal-precio-tienda')">✕</button>
+    </div>
+    <p id="mpt-prod-name" style="font-weight:700;margin-bottom:14px;font-size:15px"></p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+      <div class="form-group">
+        <label>Centro — Precio normal</label>
+        <input type="number" id="mpt-s1-normal" placeholder="Precio base" step="0.01" min="0">
+      </div>
+      <div class="form-group">
+        <label>Centro — Precio mayoreo</label>
+        <input type="number" id="mpt-s1-mayoreo" placeholder="Precio base" step="0.01" min="0">
+      </div>
+      <div class="form-group">
+        <label>Norte — Precio normal</label>
+        <input type="number" id="mpt-s2-normal" placeholder="Precio base" step="0.01" min="0">
+      </div>
+      <div class="form-group">
+        <label>Norte — Precio mayoreo</label>
+        <input type="number" id="mpt-s2-mayoreo" placeholder="Precio base" step="0.01" min="0">
+      </div>
+    </div>
+    <input type="hidden" id="mpt-prod-id">
+    <div class="modal-footer">
+      <button class="ghost-button" onclick="cerrarModal('modal-precio-tienda')">Cancelar</button>
+      <button class="primary-button" onclick="guardarPrecioModal()">Guardar</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══ TOAST ══ -->
 <div class="toast" id="toast"></div>
 <script>
@@ -1079,6 +1128,13 @@ const fmt=n=>'$'+parseFloat(n||0).toLocaleString('es-MX',{minimumFractionDigits:
 const fmtQty=(n,unit)=>parseFloat(n||0).toFixed(unit==='piezas'?0:2)+' '+unit;
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6)}
 function today(){return new Date().toISOString().split('T')[0]}
+// Devuelve el precio efectivo de un producto para una tienda (sobreprecio por tienda si existe, si no el precio base)
+function getStorePrecio(p,storeId,tipo='normal'){
+  if(!p) return 0;
+  const ov=p.storePrices?.[storeId]?.[tipo];
+  if(ov!=null&&ov>0) return ov;
+  return tipo==='normal'?(p.priceNormal||0):(p.priceMayoreo||0);
+}
 function nowTime(){return new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'})}
 function nowISO(){return new Date().toISOString()}
 function formatFecha(iso){if(!iso)return'—';const d=new Date(iso);return d.toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'})}
@@ -1197,6 +1253,7 @@ function renderRail(){
     <nav class="nav-list">
       <button class="nav-button" data-page="productos" onclick="goTo('productos',this)"><span class="nav-icon">🧀</span><span>Productos</span></button>
       <button class="nav-button" data-page="proveedores" onclick="goTo('proveedores',this)"><span class="nav-icon">🚛</span><span>Proveedores</span></button>
+      <button class="nav-button" data-page="precios" onclick="goTo('precios',this)"><span class="nav-icon">🏷️</span><span>Precios por tienda</span></button>
     </nav>
     <div class="nav-section" style="margin-top:10px">Administración</div>
     <nav class="nav-list">
@@ -1277,6 +1334,7 @@ function refreshPage(){
     case 'reportes':renderReportes();break;
     case 'usuarios':renderUsuarios();break;
     case 'solicitudes':renderSolicitudes();break;
+    case 'precios':renderPrecios();break;
   }
 }
 function switchTab(page,tab,el){
@@ -1540,9 +1598,9 @@ function getVentasDia(sid){
 // ═══════════════════════════════════════════════
 function renderVentas(){
   const sid=isAdmin()?'s1':getUserStore();
-  // Ocultar historial a usuarios no-admin
+  // El historial del día es visible para todos; admin ve todo el historial, usuario solo hoy
   const tabHist=$('tab-ventas-historial');
-  if(tabHist) tabHist.style.display=isAdmin()?'':'none';
+  if(tabHist) tabHist.style.display='';
   renderCajaWall();
   // caja indicator
   const cc=$('cierre-preview');
@@ -1559,12 +1617,14 @@ function renderProdVentaList(sid,filter){
     return inv.qty>0;
   }).map(p=>{
     const inv=getStoreInv(sid,p.id);
+    const pNorm=getStorePrecio(p,sid,'normal');
+    const pMay=getStorePrecio(p,sid,'mayoreo');
     return `<tr>
       <td><strong>${p.name}</strong><div style="font-size:11px;color:var(--muted)">${p.cat}</div></td>
       <td>${fmtQty(inv.qty,p.unit)}</td>
       <td><div class="price-tag">
-        <span class="price-normal">${fmt(p.priceNormal)}/${p.unit}</span>
-        <span class="price-mayoreo">Mayoreo: ${fmt(p.priceMayoreo)} (+${p.minMayoreo} ${p.unit})</span>
+        <span class="price-normal">${fmt(pNorm)}/${p.unit}</span>
+        <span class="price-mayoreo">Mayoreo: ${fmt(pMay)} (+${p.minMayoreo} ${p.unit})</span>
       </div></td>
       <td><span class="mayoreo-badge">${p.minMayoreo}+ ${p.unit}</span></td>
       <td><button class="tiny-button" onclick="addToCart('${p.id}')">+ Agregar</button></td>
@@ -1598,10 +1658,11 @@ function renderCarrito(){
   const ci=$('carrito-items');
   if(!ci) return;
   if(!state.cart.length){ci.innerHTML='<div class="empty-state" style="padding:20px"><div class="icon">🛒</div><p>Carrito vacío</p></div>';calcTotals();return;}
+  const _cartSid=isAdmin()?'s1':getUserStore();
   ci.innerHTML=state.cart.map(c=>{
     const p=getProduct(c.productId); if(!p) return '';
     const isMayoreo=c.qty>=p.minMayoreo;
-    const price=isMayoreo?p.priceMayoreo:p.priceNormal;
+    const price=getStorePrecio(p,_cartSid,isMayoreo?'mayoreo':'normal');
     const sub=price*c.qty;
     const step=p.unit==='piezas'?1:0.1;
     return `<div class="cart-item">
@@ -1624,11 +1685,12 @@ function renderCarrito(){
 }
 function calcTotals(){
   let sub=0; let hasMayoreo=false;
+  const _calcSid=isAdmin()?'s1':getUserStore();
   state.cart.forEach(c=>{
     const p=getProduct(c.productId); if(!p) return;
     const isMayoreo=c.qty>=p.minMayoreo;
     if(isMayoreo) hasMayoreo=true;
-    sub+=( isMayoreo?p.priceMayoreo:p.priceNormal)*c.qty;
+    sub+=getStorePrecio(p,_calcSid,isMayoreo?'mayoreo':'normal')*c.qty;
   });
   const st=$('sub-total'); const gt=$('grand-total'); const mn=$('mayoreo-notice');
   if(st) st.textContent=fmt(sub);
@@ -1644,7 +1706,7 @@ function registrarVenta(){
   const items=state.cart.map(c=>{
     const p=getProduct(c.productId);
     const isMayoreo=c.qty>=p.minMayoreo;
-    const price=isMayoreo?p.priceMayoreo:p.priceNormal;
+    const price=getStorePrecio(p,sid,isMayoreo?'mayoreo':'normal');
     const sub=price*c.qty;
     total+=sub;
     // update inventory
@@ -2547,6 +2609,81 @@ function confirmarEliminarProveedor(id){
 }
 
 // ═══════════════════════════════════════════════
+//  PRECIOS POR TIENDA
+// ═══════════════════════════════════════════════
+function renderPrecios(){
+  const wrap=$('precios-tienda-wrap'); if(!wrap) return;
+  if(!products.length){
+    wrap.innerHTML='<div class="empty-state"><div class="icon">🏷️</div><p>No hay productos registrados</p></div>';
+    return;
+  }
+  const storeNames={s1:'Centro',s2:'Norte'};
+  wrap.innerHTML=`<div class="panel" style="padding:0;overflow:hidden">
+    <div class="table-wrap">
+    <table>
+      <thead><tr>
+        <th>Producto</th>
+        <th>Precio base</th>
+        <th>Centro — Normal</th>
+        <th>Centro — Mayoreo</th>
+        <th>Norte — Normal</th>
+        <th>Norte — Mayoreo</th>
+        <th></th>
+      </tr></thead>
+      <tbody>
+        ${products.map(p=>{
+          const s1n=p.storePrices?.s1?.normal||'';
+          const s1m=p.storePrices?.s1?.mayoreo||'';
+          const s2n=p.storePrices?.s2?.normal||'';
+          const s2m=p.storePrices?.s2?.mayoreo||'';
+          const hasOverride=(s1n||s1m||s2n||s2m);
+          return `<tr>
+            <td><strong>${p.name}</strong><div style="font-size:11px;color:var(--muted)">${p.cat}</div></td>
+            <td>${fmt(p.priceNormal)}/${p.unit}</td>
+            <td>${s1n?`<span style="color:var(--herb);font-weight:700">${fmt(s1n)}</span>`:'<span style="color:var(--muted);font-size:11px">—base—</span>'}</td>
+            <td>${s1m?`<span style="color:var(--herb);font-weight:700">${fmt(s1m)}</span>`:'<span style="color:var(--muted);font-size:11px">—base—</span>'}</td>
+            <td>${s2n?`<span style="color:var(--s2);font-weight:700">${fmt(s2n)}</span>`:'<span style="color:var(--muted);font-size:11px">—base—</span>'}</td>
+            <td>${s2m?`<span style="color:var(--s2);font-weight:700">${fmt(s2m)}</span>`:'<span style="color:var(--muted);font-size:11px">—base—</span>'}</td>
+            <td><button class="tiny-button" onclick="abrirModalPrecioTienda('${p.id}')">✏️ Editar</button></td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+    </div>
+  </div>`;
+}
+function abrirModalPrecioTienda(productId){
+  const p=getProduct(productId); if(!p) return;
+  $('mpt-title').textContent='Precios — '+p.name;
+  $('mpt-prod-name').textContent=`${p.name} · Precio base: ${fmt(p.priceNormal)}/${p.unit}`;
+  $('mpt-prod-id').value=productId;
+  $('mpt-s1-normal').value=p.storePrices?.s1?.normal||'';
+  $('mpt-s1-mayoreo').value=p.storePrices?.s1?.mayoreo||'';
+  $('mpt-s2-normal').value=p.storePrices?.s2?.normal||'';
+  $('mpt-s2-mayoreo').value=p.storePrices?.s2?.mayoreo||'';
+  abrirModal('modal-precio-tienda');
+}
+function guardarPrecioModal(){
+  const productId=$('mpt-prod-id').value;
+  const p=getProduct(productId); if(!p) return;
+  if(!p.storePrices) p.storePrices={};
+  const s1n=parseFloat($('mpt-s1-normal').value)||0;
+  const s1m=parseFloat($('mpt-s1-mayoreo').value)||0;
+  const s2n=parseFloat($('mpt-s2-normal').value)||0;
+  const s2m=parseFloat($('mpt-s2-mayoreo').value)||0;
+  p.storePrices.s1={normal:s1n||null,mayoreo:s1m||null};
+  p.storePrices.s2={normal:s2n||null,mayoreo:s2m||null};
+  saveData();
+  cerrarModal('modal-precio-tienda');
+  renderPrecios();
+  showToast('✅ Precios actualizados — '+p.name);
+}
+function guardarPreciosTienda(){
+  saveData();
+  showToast('✅ Cambios guardados');
+}
+
+// ═══════════════════════════════════════════════
 //  REPORTES
 // ═══════════════════════════════════════════════
 function renderReportes(){
@@ -2554,17 +2691,22 @@ function renderReportes(){
 }
 function renderReportesTab(tab){
   const sid=activeStoreId();
+  // Ocultar tabs restringidos para no-admin
+  const tc=$('tab-comparativa');
+  if(tc) tc.style.display=isAdmin()?'':'none';
+  const tm=$('tab-reportes-margen');
+  if(tm) tm.style.display=isAdmin()?'':'none';
+  // Redirigir a ventas si no-admin intenta ver márgenes
+  if(tab==='margen'&&!isAdmin()) tab='ventas';
   if(tab==='ventas') renderRepVentas(sid);
   else if(tab==='margen') renderRepMargen(sid);
   else if(tab==='merma') renderRepMerma(sid);
   else if(tab==='comparativa') renderRepComparativa();
-  // hide comparativa tab for non-admin
-  const tc=$('tab-comparativa');
-  if(tc) tc.style.display=isAdmin()?'':'none';
 }
 function renderRepVentas(sid){
   const kpis=$('rep-ventas-kpis'); if(!kpis) return;
-  const storeSales=sales.filter(s=>!sid||s.storeId===sid);
+  // No-admin solo ve ventas del día de hoy
+  const storeSales=sales.filter(s=>(!sid||s.storeId===sid)&&(isAdmin()||s.fecha.startsWith(today())));
   const total=storeSales.reduce((a,s)=>a+s.total,0);
   const ticket=storeSales.length?total/storeSales.length:0;
   const topProd={};
@@ -2577,9 +2719,11 @@ function renderRepVentas(sid){
     <div class="metric"><div><div class="eyebrow">Más vendido</div><div class="metric-value" style="font-size:18px">${topP?.name||'—'}</div></div></div>
     <div class="metric"><div><div class="eyebrow">Pagos efectivo</div><div class="metric-value">${fmt(storeSales.filter(s=>s.pago==='Efectivo').reduce((a,s)=>a+s.total,0))}</div></div></div>`;
 
-  // 30-day sales chart
+  // 30-day sales chart (solo admin)
+  const chartWrap30=$('chartRepVentas')?.closest('.panel');
+  if(chartWrap30) chartWrap30.style.display=isAdmin()?'':'none';
   const ctx30=$('chartRepVentas')?.getContext('2d');
-  if(ctx30){
+  if(ctx30&&isAdmin()){
     if(window._cRepVentas) window._cRepVentas.destroy();
     const labels30=[]; const data30=[];
     for(let i=29;i>=0;i--){
