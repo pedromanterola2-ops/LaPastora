@@ -1811,9 +1811,11 @@ function renderInventario(){
       <option value="s2"${cur==='s2'?' selected':''}>Norte</option>
     </select>`;
   } else { filt.innerHTML=''; }
-  // Ocultar movimientos a usuarios no-admin
+  // Ocultar movimientos y ajuste manual a usuarios no-admin
   const tabMov=$('tab-inv-movimientos');
   if(tabMov) tabMov.style.display=isAdmin()?'':'none';
+  const tabAjuste=$('tab-ajuste-inv');
+  if(tabAjuste) tabAjuste.style.display=isAdmin()?'':'none';
   renderInvTable(sid||'');
   renderMovTable(sid);
   renderAjusteProductos();
@@ -1960,6 +1962,13 @@ function renderMovTable(sid){
 }
 function renderAjusteProductos(){
   const wrap=$('ajuste-form-wrap'); if(!wrap) return;
+  if(!isAdmin()){
+    wrap.innerHTML=`<div class="empty-state" style="padding:48px 24px">
+      <div class="icon">🔒</div>
+      <p>Solo el administrador puede realizar ajustes de inventario.</p>
+    </div>`;
+    return;
+  }
   if(!products.length){
     wrap.innerHTML=`<div class="empty-state" style="padding:48px 24px">
       <div class="icon">📦</div>
@@ -2006,6 +2015,7 @@ function renderAjusteProductos(){
   }
 }
 function registrarAjuste(){
+  if(!isAdmin()){showToast('Solo el administrador puede ajustar el inventario','warn');return;}
   const prodSel=$('aj-producto');
   const tiendaSel=$('aj-tienda');
   if(!prodSel||!prodSel.value){showToast('Selecciona un producto','warn');return;}
