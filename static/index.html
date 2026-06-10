@@ -1396,28 +1396,22 @@ function renderDashboard(){
       <div class="metric"><div><div class="eyebrow">Ventas del mes</div><div class="metric-value text-ok">${fmt(totalMes)}</div><small>${storeSales.length} ventas</small></div></div>
       <div class="metric"><div><div class="eyebrow">Merma registrada</div><div class="metric-value text-warn">${fmt(totalMerma)}</div><small>${mermas.length} registros</small></div><span class="metric-badge badge-warn">⚠ Revisar</span></div>`;
   } else {
-    // Vista usuario: mostrar meta del día (sin montos)
+    // Vista usuario: solo estado de caja y contador de la sesión actual — sin historial, sin meta
     const userStore=getUserStore();
-    const metaDiaria=(metas[userStore]?.diaria)||0;
-    const pct=metaDiaria>0?Math.min(Math.round(totalHoy/metaDiaria*100),100):0;
-    const colorMeta=pct>=100?'var(--ok)':pct>=60?'var(--warn)':'var(--s1)';
-    const emoji=pct>=100?'🎉':pct>=60?'💪':'🏃';
-    const metaLabel=metaDiaria>0?`${pct}% de la meta`:'Sin meta definida';
+    const caja=cajaActiva[userStore];
+    const sesionSales=caja?todaySales.filter(s=>s.fecha>=caja.abierta):[];
+    const cajaEstado=caja
+      ?`<span class="caja-status-open">🟢 Caja abierta ${formatHora(caja.abierta)}</span>`
+      :`<span class="caja-status-closed">🔴 Caja cerrada</span>`;
     kpis=`
       <div class="metric" style="grid-column:1/-1;max-width:480px">
         <div style="width:100%">
-          <div class="eyebrow">🎯 Meta del día — ${storeName(userStore)}</div>
-          <div style="display:flex;align-items:baseline;gap:8px;margin:6px 0 4px">
-            <div class="metric-value" style="color:${colorMeta}">${emoji} ${metaLabel}</div>
-          </div>
-          <div style="height:12px;background:rgba(0,0,0,.08);border-radius:6px;overflow:hidden;margin-bottom:6px">
-            <div style="height:100%;width:${pct}%;background:${colorMeta};border-radius:6px;transition:width .5s"></div>
-          </div>
-          <small style="color:var(--muted)">${todaySales.length} venta(s) registrada(s) hoy${metaDiaria===0?' · El admin aún no ha definido la meta':pct>=100?' · ¡Meta alcanzada!':''}</small>
+          <div class="eyebrow">${storeName(userStore)} — Estado del día</div>
+          <div style="margin:6px 0 8px">${cajaEstado}</div>
+          <small style="color:var(--muted)">${caja?`${sesionSales.length} venta(s) en esta sesión`:'Abre la caja para comenzar a vender'}</small>
         </div>
       </div>
-      <div class="metric"><div><div class="eyebrow">Ventas hoy</div><div class="metric-value">${todaySales.length}</div><small>Transacciones</small></div></div>
-      <div class="metric"><div><div class="eyebrow">Merma registrada</div><div class="metric-value text-warn">${totalMerma>0?mermas.length+' reg.':'—'}</div><small>${mermas.length} registros</small></div></div>`;
+      <div class="metric"><div><div class="eyebrow">Transacciones</div><div class="metric-value">${caja?sesionSales.length:0}</div><small>Esta sesión</small></div></div>`;
   }
   $('dash-metrics').innerHTML=kpis;
 
@@ -1624,9 +1618,9 @@ function getVentasDia(sid){
 // ═══════════════════════════════════════════════
 function renderVentas(){
   const sid=isAdmin()?'s1':getUserStore();
-  // El historial del día es visible para todos; admin ve todo el historial, usuario solo hoy
+  // Historial solo visible para admin
   const tabHist=$('tab-ventas-historial');
-  if(tabHist) tabHist.style.display='';
+  if(tabHist) tabHist.style.display=isAdmin()?'':'none';
   renderCajaWall();
   // caja indicator
   const cc=$('cierre-preview');
@@ -1761,7 +1755,9 @@ function renderVentasDia(sid){
     const sf=state.historialFiltroStore;
     vd=[...sales].filter(s=>sf==='all'||s.storeId===sf).sort((a,b)=>new Date(b.fecha)-new Date(a.fecha));
   } else {
-    vd=getVentasDia(sid);
+    // Usuario: solo ventas de la sesión de caja actual (desde apertura), nunca datos de otros días
+    const caja=cajaActiva[sid];
+    vd=caja?getVentasDia(sid).filter(s=>s.fecha>=caja.abierta):[];
   }
 
   // show/hide tienda column
@@ -1769,7 +1765,7 @@ function renderVentasDia(sid){
   if(colTienda) colTienda.style.display=adminAll?'':'none';
 
   const title=$('historial-title');
-  if(title) title.textContent=adminAll?'Historial general de ventas':'Ventas del día';
+  if(title) title.textContent=adminAll?'Historial general de ventas':'Ventas de la sesión';
 
   // filters for admin
   const hf=$('historial-filters');
