@@ -228,6 +228,10 @@ canvas{max-width:100%}
 .summary-box{background:linear-gradient(135deg,rgba(49,72,58,.08),rgba(183,131,61,.06));border:1px solid var(--curd);border-radius:var(--radius);padding:14px}
 .summary-row{display:flex;justify-content:space-between;padding:4px 0;font-size:13px;border-bottom:1px solid rgba(0,0,0,.04)}
 .summary-row:last-child{border-bottom:none;font-weight:800;font-size:15px;margin-top:6px;padding-top:8px}
+.resumen-dia-banner{background:var(--raised);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;margin-bottom:14px}
+.resumen-dia-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;font-size:13px;border-bottom:1px solid var(--line)}
+.resumen-dia-row:last-child{border-bottom:none}
+.resumen-dia-row.muted{color:var(--muted)}
 
 /* ══ RESPONSIVE / MOBILE ══════════════════════════════════════════ */
 .hamburger{display:none;background:none;border:none;padding:6px 8px;border-radius:var(--radius);font-size:22px;line-height:1;color:var(--ink);flex-shrink:0;cursor:pointer}
@@ -424,6 +428,7 @@ canvas{max-width:100%}
             <div id="dia-totales" style="font-size:13px;color:var(--muted)"></div>
           </div>
         </div>
+        <div id="historial-summary-tienda" class="resumen-dia-banner" style="display:none"></div>
         <div class="table-wrap">
           <table><thead><tr><th>#</th><th>Hora</th><th id="col-tienda" style="display:none">Tienda</th><th>Cliente</th><th>Productos</th><th>Pago</th><th>Total</th></tr></thead>
           <tbody id="ventas-dia-table"></tbody></table>
@@ -1396,10 +1401,12 @@ function renderDashboard(){
       <div class="metric"><div><div class="eyebrow">Ventas del mes</div><div class="metric-value text-ok">${fmt(totalMes)}</div><small>${storeSales.length} ventas</small></div></div>
       <div class="metric"><div><div class="eyebrow">Merma registrada</div><div class="metric-value text-warn">${fmt(totalMerma)}</div><small>${mermas.length} registros</small></div><span class="metric-badge badge-warn">⚠ Revisar</span></div>`;
   } else {
-    // Vista usuario: solo estado de caja y contador de la sesión actual — sin historial, sin meta
+    // Vista tienda: estado de caja + total vendido hoy
     const userStore=getUserStore();
     const caja=cajaActiva[userStore];
-    const sesionSales=caja?todaySales.filter(s=>s.fecha>=caja.abierta):[];
+    // ventas de HOY de esta tienda (todaySales ya está filtrado por sid=userStore)
+    const ventasHoyTienda=todaySales;
+    const totalHoyTienda=ventasHoyTienda.reduce((a,s)=>a+s.total,0);
     const cajaEstado=caja
       ?`<span class="caja-status-open">🟢 Caja abierta ${formatHora(caja.abierta)}</span>`
       :`<span class="caja-status-closed">🔴 Caja cerrada</span>`;
@@ -1408,10 +1415,10 @@ function renderDashboard(){
         <div style="width:100%">
           <div class="eyebrow">${storeName(userStore)} — Estado del día</div>
           <div style="margin:6px 0 8px">${cajaEstado}</div>
-          <small style="color:var(--muted)">${caja?`${sesionSales.length} venta(s) en esta sesión`:'Abre la caja para comenzar a vender'}</small>
+          <small style="color:var(--muted)">${caja?`${ventasHoyTienda.length} venta(s) registradas hoy`:'Abre la caja para comenzar a vender'}</small>
         </div>
       </div>
-      <div class="metric"><div><div class="eyebrow">Transacciones</div><div class="metric-value">${caja?sesionSales.length:0}</div><small>Esta sesión</small></div></div>`;
+      <div class="metric"><div><div class="eyebrow">Vendido hoy</div><div class="metric-value text-copper">${fmt(totalHoyTienda)}</div><small>${ventasHoyTienda.length} venta(s)</small></div><span class="metric-badge badge-up">Hoy</span></div>`;
   }
   $('dash-metrics').innerHTML=kpis;
 
@@ -1618,9 +1625,9 @@ function getVentasDia(sid){
 // ═══════════════════════════════════════════════
 function renderVentas(){
   const sid=isAdmin()?'s1':getUserStore();
-  // Historial solo visible para admin
+  // Tab visible para todos — admin ve historial completo, tienda ve su resumen del día
   const tabHist=$('tab-ventas-historial');
-  if(tabHist) tabHist.style.display=isAdmin()?'':'none';
+  if(tabHist) tabHist.style.display='';
   renderCajaWall();
   // caja indicator
   const cc=$('cierre-preview');
@@ -1749,25 +1756,24 @@ function registrarVenta(){
 function renderVentasDia(sid){
   const t=$('ventas-dia-table'); if(!t) return;
   const adminAll=isAdmin();
-  // Admin: show all stores (filtered by state.historialFiltroStore), user: only their store today
   let vd;
   if(adminAll){
+    // Admin: solo ventas de HOY, filtradas por tienda
     const sf=state.historialFiltroStore;
-    vd=[...sales].filter(s=>sf==='all'||s.storeId===sf).sort((a,b)=>new Date(b.fecha)-new Date(a.fecha));
+    vd=[...sales].filter(s=>s.fecha&&s.fecha.startsWith(today())&&(sf==='all'||s.storeId===sf)).sort((a,b)=>new Date(b.fecha)-new Date(a.fecha));
   } else {
-    // Usuario: solo ventas de la sesión de caja actual (desde apertura), nunca datos de otros días
-    const caja=cajaActiva[sid];
-    vd=caja?getVentasDia(sid).filter(s=>s.fecha>=caja.abierta):[];
+    // Tienda: todas las ventas de su tienda del día de hoy (todo el día, no solo sesión actual)
+    vd=getVentasDia(sid).sort((a,b)=>new Date(b.fecha)-new Date(a.fecha));
   }
 
-  // show/hide tienda column
+  // show/hide columna tienda
   const colTienda=$('col-tienda');
   if(colTienda) colTienda.style.display=adminAll?'':'none';
 
   const title=$('historial-title');
-  if(title) title.textContent=adminAll?'Historial general de ventas':'Ventas de la sesión';
+  if(title) title.textContent=adminAll?'Ventas de hoy':'Mis ventas de hoy';
 
-  // filters for admin
+  // Filtros por tienda (solo admin)
   const hf=$('historial-filters');
   if(hf&&adminAll){
     hf.innerHTML=`<div class="store-switcher">
@@ -1776,6 +1782,28 @@ function renderVentasDia(sid){
       <button class="store-tab${state.historialFiltroStore==='s2'?' is-active':''}" onclick="setHistorialFiltro('s2')">Norte</button>
     </div>`;
   } else if(hf){ hf.innerHTML=''; }
+
+  const totalDia=vd.reduce((a,v)=>a+v.total,0);
+  const dt=$('dia-totales');
+  if(dt) dt.innerHTML=`<strong>${fmt(totalDia)}</strong> en ${vd.length} venta(s)`;
+
+  // Banner resumen para tiendas
+  const sb=$('historial-summary-tienda');
+  if(sb&&!adminAll){
+    const ef=vd.filter(v=>v.pago==='Efectivo').reduce((a,v)=>a+v.total,0);
+    const tj=vd.filter(v=>v.pago==='Tarjeta').reduce((a,v)=>a+v.total,0);
+    const tr=vd.filter(v=>v.pago==='Transferencia').reduce((a,v)=>a+v.total,0);
+    const tprom=vd.length?fmt(totalDia/vd.length):'—';
+    sb.style.display='';
+    sb.innerHTML=`
+      <div class="resumen-dia-row"><span style="font-weight:700">💰 Total del día</span><strong class="text-copper" style="font-size:16px">${fmt(totalDia)}</strong></div>
+      <div class="resumen-dia-row"><span>Ventas registradas</span><strong>${vd.length}</strong></div>
+      <div class="resumen-dia-row"><span>Ticket promedio</span><span>${tprom}</span></div>
+      ${ef>0?`<div class="resumen-dia-row muted"><span>💵 Efectivo</span><span>${fmt(ef)}</span></div>`:''}
+      ${tj>0?`<div class="resumen-dia-row muted"><span>💳 Tarjeta</span><span>${fmt(tj)}</span></div>`:''}
+      ${tr>0?`<div class="resumen-dia-row muted"><span>📱 Transferencia</span><span>${fmt(tr)}</span></div>`:''}
+    `;
+  } else if(sb){ sb.style.display='none'; }
 
   const cols=adminAll?7:6;
   t.innerHTML=vd.map(v=>`<tr>
@@ -1787,9 +1815,6 @@ function renderVentasDia(sid){
     <td><span class="chip">${v.pago}</span></td>
     <td class="text-copper">${fmt(v.total)}</td>
   </tr>`).join('')||`<tr><td colspan="${cols}" class="text-muted" style="text-align:center;padding:20px">Sin ventas registradas</td></tr>`;
-  const totalDia=vd.reduce((a,v)=>a+v.total,0);
-  const dt=$('dia-totales');
-  if(dt) dt.innerHTML=`<strong>${fmt(totalDia)}</strong> en ${vd.length} venta(s)`;
 }
 function setHistorialFiltro(store){
   state.historialFiltroStore=store;
