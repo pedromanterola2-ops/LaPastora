@@ -782,7 +782,7 @@ canvas{max-width:100%}
 <div id="page-usuarios" class="page">
   <div class="section-head" style="margin-bottom:16px">
     <h3>Gestión de usuarios</h3>
-    <button class="primary-button" onclick="abrirModalUsuario(null)">+ Nuevo usuario</button>
+    <button class="primary-button" onclick="avisoNuevoUsuario()">+ Nuevo usuario</button>
   </div>
   <div class="grid g2 mb18">
     <div class="panel">
@@ -834,7 +834,7 @@ canvas{max-width:100%}
       <label>Avatar (emoji)</label>
       <input type="text" id="uu-avatar" placeholder="👤" maxlength="4">
     </div>
-    <div class="form-group" style="margin-bottom:12px">
+    <div class="form-group" id="uu-pwd-group" style="margin-bottom:12px;display:none">
       <label id="uu-pwd-label">Contraseña</label>
       <input type="password" id="uu-password" placeholder="Contraseña" autocomplete="new-password">
       <small id="uu-pwd-hint" style="color:var(--muted);font-size:11px;display:block;margin-top:4px"></small>
@@ -1007,10 +1007,11 @@ canvas{max-width:100%}
 //  DATA — usuarios, tiendas, catálogos
 // ═══════════════════════════════════════════════
 // Usuarios y metas — se cargan de lp_data (ya no son constantes hardcodeadas)
+// Solo respaldo en memoria para mostrar nombres antes de cargar `perfiles`. El login real es por Supabase Auth.
 const DEFAULT_USERS = [
-  { id:'u1', name:'Admin', role:'admin', avatar:'👨‍💼', storeId:null, password:'admin123', activo:true },
-  { id:'u2', name:'María', role:'user', avatar:'👩‍🍳', storeId:'s1', password:'pastora123', activo:true },
-  { id:'u3', name:'Juan', role:'user', avatar:'👨‍🍳', storeId:'s2', password:'pastora123', activo:true },
+  { id:'u1', name:'Admin', role:'admin', avatar:'👨‍💼', storeId:null, activo:true },
+  { id:'u2', name:'María', role:'user', avatar:'👩‍🍳', storeId:'s1', activo:true },
+  { id:'u3', name:'Juan', role:'user', avatar:'👨‍🍳', storeId:'s2', activo:true },
 ];
 const STORES = [
   { id:'central', name:'Almacén Central', short:'Central', color:'var(--rind)' },
@@ -1046,7 +1047,7 @@ let movimientos = [];
 let cajaLog = []; // closed cajas history
 let cajaActiva = { s1:null, s2:null }; // {storeId: {abierta:timestamp, userId, snapInv}}
 let proveedores = []; // {id,name,tipo,tel,contacto,prod,ciudad,notas,activo,creado}
-let usuarios = []; // {id,name,role,avatar,storeId,password,activo}
+let usuarios = []; // en memoria, desde tabla `perfiles`: {id,name,role,avatar,storeId,activo} — sin contraseñas
 let metas = { s1:{ diaria:0 }, s2:{ diaria:0 } }; // metas diarias de venta por tienda
 let solicitudes = []; // {id,storeId,userId,status:'pendiente'|'aprobada'|'rechazada',items:[{productId,cantSolicitada,cantAprobada,notas}],notas,fecha,fechaRespuesta,adminId,notasAdmin}
 
@@ -1196,53 +1197,103 @@ function showToast(msg,type=''){
 // ═══════════════════════════════════════════════
 //  AUTH / LOGIN
 // ═══════════════════════════════════════════════
-function renderLogin(){
-  const c=$('user-cards'); c.innerHTML='';
-  usuarios.filter(u=>u.activo).forEach(u=>{
-    const store=u.storeId?STORES.find(s=>s.id===u.storeId):null;
-    c.innerHTML+=`<div class="user-card${u.role==='admin'?' admin-card':''}" onclick="pedirPassword('${u.id}')">
-      <div class="avatar">${u.avatar}</div>
-      <div class="uname">${u.name}</div>
-      <div class="urole">${u.role==='admin'?'Administrador':'Vendedor'}</div>
+// Tarjetas del login: se piden a Supabase con la RPC pública `cuentas_login`.
+let _cuentasLogin = [];
+async function renderLogin(){
+  const c=$('user-cards'); if(!c) return;
+  c.innerHTML='<div style="color:var(--muted);font-size:13px;padding:24px">Cargando usuarios…</div>';
+  _cuentasLogin = [];
+  if(ensureSupa()){
+    try{
+      const { data, error } = await supa.rpc('cuentas_login');
+      if(error) throw error;
+      _cuentasLogin = data || [];
+    }catch(e){ console.warn('[login] no se pudieron cargar las cuentas', e); }
+  }
+  if(!_cuentasLogin.length){
+    c.innerHTML='<div style="color:var(--danger);font-size:13px;padding:24px;line-height:1.5">No se pudieron cargar los usuarios.<br>Revisa tu conexión a internet e intenta de nuevo.</div>';
+    return;
+  }
+  c.innerHTML='';
+  _cuentasLogin.forEach(u=>{
+    const store=u.store_id?STORES.find(s=>s.id===u.store_id):null;
+    c.innerHTML+=`<div class="user-card${u.rol==='admin'?' admin-card':''}" onclick="pedirPassword('${u.email}')">
+      <div class="avatar">${u.avatar||'👤'}</div>
+      <div class="uname">${u.nombre}</div>
+      <div class="urole">${u.rol==='admin'?'Administrador':'Vendedor'}</div>
       ${store?`<div class="ustore">${store.name}</div>`:'<div class="ustore">Todas las tiendas</div>'}
     </div>`;
   });
 }
-let _loginUserId = null;
-function pedirPassword(userId){
-  const u=usuarios.find(x=>x.id===userId);
+let _loginEmail = null;
+function pedirPassword(email){
+  const u=_cuentasLogin.find(x=>x.email===email);
   if(!u) return;
-  _loginUserId=userId;
-  $('pwd-avatar').textContent=u.avatar;
-  $('pwd-name').textContent=u.name;
-  $('pwd-role-label').textContent=u.role==='admin'?'Administrador':'Vendedor — '+storeName(u.storeId||'s1');
+  _loginEmail=email;
+  $('pwd-avatar').textContent=u.avatar||'👤';
+  $('pwd-name').textContent=u.nombre;
+  $('pwd-role-label').textContent=u.rol==='admin'?'Administrador':'Vendedor — '+storeName(u.store_id||'s1');
   $('pwd-input').value='';
   $('pwd-error').style.display='none';
   $('modal-pwd').classList.add('is-open');
   setTimeout(()=>$('pwd-input').focus(),150);
 }
-function confirmarPassword(){
-  const u=usuarios.find(x=>x.id===_loginUserId);
-  if(!u) return;
-  if($('pwd-input').value!==u.password){
-    $('pwd-error').style.display='block';
-    $('pwd-input').value='';
-    $('pwd-input').focus();
+async function confirmarPassword(){
+  const pin=$('pwd-input').value;
+  if(!_loginEmail || !pin) return;
+  if(!ensureSupa()){ mostrarErrorPwd('Sin conexión a internet'); return; }
+  mostrarErrorPwd(null);
+  let res;
+  try{ res = await supa.auth.signInWithPassword({ email:_loginEmail, password:pin }); }
+  catch(e){ res = { error:e }; }
+  if(res.error || !res.data || !res.data.session){
+    mostrarErrorPwd('❌ PIN incorrecto');
+    $('pwd-input').value=''; $('pwd-input').focus();
     return;
   }
   cerrarModal('modal-pwd');
-  loginAs(u.id);
+  const ok = await iniciarSesionApp(res.data.session);
+  if(!ok){ showToast('No se encontró el perfil de este usuario','warn'); $('login-screen').style.display='flex'; }
 }
-function loginAs(userId){
-  state.user=usuarios.find(u=>u.id===userId);
-  state.viewStore=isAdmin()?'all':state.user.storeId;
+function mostrarErrorPwd(msg){
+  const e=$('pwd-error'); if(!e) return;
+  if(msg){ e.textContent=msg; e.style.display='block'; } else { e.style.display='none'; }
+}
+
+// Trae el perfil (rol/tienda/avatar) del usuario autenticado desde la tabla `perfiles`.
+async function cargarPerfil(uid){
+  if(!ensureSupa()) return null;
+  try{
+    const { data, error } = await supa.from('perfiles').select('*').eq('id',uid).maybeSingle();
+    if(error){ console.warn('[perfil]', error.message); return null; }
+    return data;
+  }catch(e){ console.warn('[perfil]', e); return null; }
+}
+// Llena `usuarios` (en memoria) desde `perfiles` — para mostrar nombres y la página de admin.
+async function cargarUsuariosDesdePerfiles(){
+  if(!ensureSupa()) return;
+  try{
+    const { data } = await supa.from('perfiles').select('*');
+    if(data) usuarios = data.map(p=>({id:p.id,name:p.nombre,role:p.rol,avatar:p.avatar,storeId:p.store_id,activo:p.activo}));
+  }catch(e){ console.warn('[perfiles]', e); }
+}
+// Flujo común tras autenticar: carga perfil + datos y abre la app.
+async function iniciarSesionApp(session){
+  const perfil = await cargarPerfil(session.user.id);
+  if(!perfil){ try{ await supa.auth.signOut(); }catch(e){} return false; }
+  await cargarUsuariosDesdePerfiles();
+  await cloudInit();
+  state.user = { id:session.user.id, name:perfil.nombre, role:perfil.rol, avatar:perfil.avatar, storeId:perfil.store_id };
+  state.viewStore = isAdmin()?'all':state.user.storeId;
   $('login-screen').style.display='none';
   $('app').classList.add('is-visible');
   renderShell();
   goTo('dashboard',null);
+  return true;
 }
-function logout(){
+async function logout(){
   state.user=null; state.cart=[];
+  if(ensureSupa()){ try{ await supa.auth.signOut(); }catch(e){} }
   $('app').classList.remove('is-visible');
   $('login-screen').style.display='flex';
   renderLogin();
@@ -2937,18 +2988,25 @@ function renderUsuarios(){
     </div>`;
   }).join(''):'<div class="empty-state"><div class="icon">👥</div><p>Sin usuarios</p></div>';
 }
+function avisoNuevoUsuario(){
+  alert('Para crear un usuario nuevo:\n\n'
+    + '1) Entra a Supabase → Authentication → Users → "Add user".\n'
+    + '2) Usa un correo interno (ej. nombre@lapastora.app), marca "Auto Confirm User" y pon su PIN como contraseña.\n'
+    + '3) En SQL Editor, agrégalo a la tabla "perfiles" (o pídeme el SQL).\n'
+    + '4) Vuelve aquí y edita su rol, tienda y avatar.\n\n'
+    + 'La creación de cuentas se hace en Supabase por seguridad.');
+}
 function abrirModalUsuario(userId){
   const u=userId?usuarios.find(x=>x.id===userId):null;
-  $('modal-usuario-title').textContent=u?'Editar usuario':'Nuevo usuario';
-  $('uu-id').value=u?u.id:'';
-  $('uu-name').value=u?u.name:'';
-  $('uu-role').value=u?u.role:'user';
-  $('uu-avatar').value=u?u.avatar:'👤';
-  $('uu-store').value=u?u.storeId||'s1':'s1';
-  $('uu-password').value='';
-  $('uu-activo').checked=u?u.activo:true;
-  $('uu-pwd-hint').textContent=u?'Dejar en blanco para no cambiar la contraseña':'';
-  $('uu-pwd-label').textContent=u?'Nueva contraseña (opcional)':'Contraseña';
+  if(!u){ avisoNuevoUsuario(); return; }   // crear cuentas se hace en Supabase
+  $('modal-usuario-title').textContent='Editar usuario';
+  $('uu-id').value=u.id;
+  $('uu-name').value=u.name;
+  $('uu-role').value=u.role;
+  $('uu-avatar').value=u.avatar||'👤';
+  $('uu-store').value=u.storeId||'s1';
+  $('uu-activo').checked=u.activo;
+  const pg=$('uu-pwd-group'); if(pg) pg.style.display='none'; // el PIN se cambia en Supabase
   toggleStoreField();
   $('modal-usuario').classList.add('is-open');
 }
@@ -2957,39 +3015,35 @@ function toggleStoreField(){
   const wrap=$('uu-store-wrap');
   if(wrap) wrap.style.display=role==='admin'?'none':'';
 }
-function guardarUsuario(){
-  const id=$('uu-id').value||('u'+Date.now());
+async function guardarUsuario(){
+  const id=$('uu-id').value;
   const name=$('uu-name').value.trim();
   const role=$('uu-role').value;
   const storeId=role==='admin'?null:$('uu-store').value;
   const avatar=$('uu-avatar').value.trim()||'👤';
-  const newPwd=$('uu-password').value;
   const activo=$('uu-activo').checked;
   if(!name){showToast('El nombre es requerido','warn');return;}
-  const idx=usuarios.findIndex(u=>u.id===id);
-  if(idx>=0){
-    // editar
-    const u=usuarios[idx];
-    u.name=name; u.role=role; u.storeId=storeId; u.avatar=avatar; u.activo=activo;
-    if(newPwd) u.password=newPwd;
-  } else {
-    // crear
-    if(!newPwd){showToast('La contraseña es requerida','warn');return;}
-    usuarios.push({id,name,role,avatar,storeId,password:newPwd,activo});
-  }
-  saveData();
+  if(!id){ avisoNuevoUsuario(); return; }   // crear cuentas se hace en Supabase
+  if(!ensureSupa()){ showToast('Sin conexión','warn'); return; }
+  const { error } = await supa.from('perfiles')
+    .update({ nombre:name, rol:role, avatar, store_id:storeId, activo })
+    .eq('id', id);
+  if(error){ showToast('No se pudo guardar: '+error.message,'warn'); return; }
+  await cargarUsuariosDesdePerfiles();
   cerrarModal('modal-usuario');
   renderUsuarios();
-  showToast('✅ Usuario guardado');
+  showToast('✅ Perfil actualizado');
 }
-function eliminarUsuario(userId){
+async function eliminarUsuario(userId){
   const u=usuarios.find(x=>x.id===userId);
   if(!u) return;
-  if(!confirm(`¿Eliminar al usuario "${u.name}"? Esta acción no se puede deshacer.`)) return;
-  usuarios=usuarios.filter(x=>x.id!==userId);
-  saveData();
+  if(!confirm(`¿Quitar a "${u.name}" de la app?\n\nSu acceso se desactiva de inmediato. Para borrar la cuenta por completo, elimínala también en Supabase → Authentication → Users.`)) return;
+  if(!ensureSupa()){ showToast('Sin conexión','warn'); return; }
+  const { error } = await supa.from('perfiles').delete().eq('id', userId);
+  if(error){ showToast('No se pudo: '+error.message,'warn'); return; }
+  await cargarUsuariosDesdePerfiles();
   renderUsuarios();
-  showToast('Usuario eliminado');
+  showToast('Usuario quitado');
 }
 function guardarMetas(){
   const s1=parseFloat($('meta-s1').value)||0;
@@ -3264,8 +3318,9 @@ let pushTimer = null;
 let pushPending = false;
 
 // Reúne todo el estado en un solo objeto (mismo formato que localStorage)
+// NOTA: `usuarios` ya NO se sincroniza — los usuarios viven en Supabase Auth + tabla `perfiles`.
 function collectData(){
-  return {products,categories,inventory,sales,purchases,mermaList,traslados,movimientos,cajaLog,cajaActiva,proveedores,usuarios,metas,solicitudes};
+  return {products,categories,inventory,sales,purchases,mermaList,traslados,movimientos,cajaLog,cajaActiva,proveedores,metas,solicitudes};
 }
 // Vuelca un objeto de datos a las variables globales (reusado por carga local, nube y realtime)
 function applyData(d){
@@ -3328,8 +3383,8 @@ function mergeRemote(d){
   solicitudes = mergeArr(solicitudes, d.solicitudes);
   if(d.cajaActiva)            cajaActiva  = d.cajaActiva;
   if(d.proveedores)          proveedores = d.proveedores;
-  if(d.usuarios&&d.usuarios.length) usuarios = d.usuarios;
   if(d.metas)                metas       = d.metas;
+  // `usuarios` ya no viene del blob; se carga de la tabla `perfiles` tras iniciar sesión.
 }
 
 // ── Indicador de estado de conexión (pastilla fija, no intrusiva) ──
@@ -3355,13 +3410,20 @@ function setCloudBadge(status){
   if(status==='syncing'){ clearTimeout(b._t); b._t=setTimeout(()=>setCloudBadge(cloudOK?'online':'local'),900); }
 }
 
-// ── Inicializa la nube: crea cliente, baja datos y se suscribe a cambios ──
+// ── Crea (una sola vez) el cliente de Supabase, compartido por login y nube ──
+function ensureSupa(){
+  if(supa) return true;
+  if(!window.supabase || SUPA_URL.indexOf('__SUPABASE')===0) return false;
+  supa = window.supabase.createClient(SUPA_URL, SUPA_KEY);
+  return true;
+}
+
+// ── Inicializa la nube: baja datos y se suscribe a cambios ──
 async function cloudInit(){
   try{
-    if(!window.supabase || SUPA_URL.indexOf('__SUPABASE')===0){
+    if(!ensureSupa()){
       setCloudBadge('local'); return;              // sin librería o sin credenciales → modo local
     }
-    supa = window.supabase.createClient(SUPA_URL, SUPA_KEY);
     const { data, error } = await supa.from(CLOUD_TABLE).select('data').eq('id',CLOUD_ROW_ID).maybeSingle();
     if(error){ console.warn('[nube] no disponible:', error.message); setCloudBadge('local'); return; }
     cloudOK = true;
@@ -3478,10 +3540,18 @@ function closeMobileNav(){
 //  INIT
 // ═══════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', async ()=>{
-  loadData();                 // 1) carga local → arranque instantáneo y respaldo offline
-  await cloudInit();          // 2) intenta la nube → si hay datos compartidos, re-hidrata
-  renderLogin();
+  loadData();                 // 1) carga local → respaldo offline
   $('topbar-eyebrow').textContent='Quesería artesanal';
+  ensureSupa();               // 2) prepara el cliente de Supabase (login + nube)
+  // 3) ¿Ya hay una sesión iniciada? (persiste entre recargas y reaperturas)
+  let session = null;
+  if(supa){ try{ const r = await supa.auth.getSession(); session = r.data.session; }catch(e){} }
+  if(session){
+    const ok = await iniciarSesionApp(session);   // entra directo con la sesión guardada
+    if(!ok){ await renderLogin(); }               // sin perfil válido → mostrar login
+  } else {
+    await renderLogin();                           // 4) mostrar pantalla de login
+  }
 });
 </script>
 </body>
