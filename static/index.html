@@ -450,7 +450,7 @@ canvas{max-width:100%}
   </div>
   <div id="inventario-tab-actual" class="tab-content is-active">
     <div class="panel">
-      <div class="section-head"><h3>Inventario por producto</h3><div class="flex-gap"><input type="text" placeholder="Buscar..." style="width:180px;min-height:30px;padding:4px 9px" oninput="invSearchTerm=this.value.toLowerCase();renderInvTable($('inv-store-sel')?$('inv-store-sel').value:(activeStoreId()||''))"><div class="flex-gap" id="inv-store-filter"></div></div></div>
+      <div class="section-head"><h3>Inventario por producto</h3><div class="flex-gap"><input type="text" placeholder="Buscar..." style="width:180px;min-height:30px;padding:4px 9px" oninput="invSearchTerm=this.value.toLowerCase();renderInvTable($('inv-store-sel')?$('inv-store-sel').value:(activeStoreId()||''))"><div class="flex-gap" id="inv-store-filter"></div><button class="tiny-button" id="btn-recalc-inv" style="display:none" onclick="abrirRecalcular()">🔧 Recalcular</button></div></div>
       <div class="table-wrap">
         <table><thead id="inv-thead"><tr><th>Producto</th><th>Unidad</th><th>Stock</th><th>Mín.</th><th>P. Normal</th><th>P. Mayoreo</th><th>Costo</th><th>Vence</th><th>Estado</th></tr></thead>
         <tbody id="inv-table"></tbody></table>
@@ -851,6 +851,21 @@ canvas{max-width:100%}
   </div>
 </div>
 
+<!-- Modal: recalcular inventario (admin) -->
+<div class="modal-overlay" id="modal-recalc">
+  <div class="modal" style="max-width:580px">
+    <div class="modal-header">
+      <span class="modal-title">🔧 Recalcular inventario</span>
+      <button class="modal-close" onclick="cerrarModal('modal-recalc')">✕</button>
+    </div>
+    <div id="recalc-body"></div>
+    <div class="modal-footer">
+      <button class="ghost-button" onclick="cerrarModal('modal-recalc')">Cerrar</button>
+      <button class="primary-button" id="recalc-apply" onclick="aplicarRecalculo()">Aplicar correcciones</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══════════════════════ SOLICITUDES ══════════════════════ -->
 <div id="page-solicitudes" class="page">
   <div class="section-head" style="margin-bottom:16px">
@@ -1196,6 +1211,77 @@ function consumirLotesFIFO(inv, qty){
   inv.lots=lots.filter(l=>(l.qty||0)>0.0001);
   inv.qty=parseFloat(Math.max(0,(inv.qty||0)-qty).toFixed(3));
   return consumidos;
+}
+// ── Reconciliación: ajusta inv a `targetQty` recortando lotes FIFO o agregando remanente. ──
+function reconciliarLotes(inv, targetQty){
+  if(targetQty<=0){ inv.lots=[]; inv.qty=0; return; }
+  let lots=(inv.lots||[]).slice();
+  const suma=lots.reduce((a,l)=>a+(l.qty||0),0);
+  if(suma>targetQty+0.0001){
+    lots.sort((a,b)=>{const da=a.expiry?new Date(a.expiry).getTime():Infinity;const db=b.expiry?new Date(b.expiry).getTime():Infinity;return da-db;});
+    let exceso=suma-targetQty;
+    for(const l of lots){ if(exceso<=0.0001) break; const take=Math.min(l.qty||0,exceso); l.qty=parseFloat(((l.qty||0)-take).toFixed(3)); exceso=parseFloat((exceso-take).toFixed(3)); }
+    lots=lots.filter(l=>(l.qty||0)>0.0001);
+  } else if(suma<targetQty-0.0001){
+    lots.push({id:'REC-'+uid(), qty:parseFloat((targetQty-suma).toFixed(3)), expiry:null, cost:(lots[0]?.cost)||0});
+  }
+  inv.lots=lots; inv.qty=parseFloat(targetQty.toFixed(3));
+}
+// ── Cantidad esperada por tienda/producto según el historial de movimientos. ──
+function calcLedgerInv(){
+  const m={central:{},s1:{},s2:{}};
+  (movimientos||[]).forEach(mv=>{
+    if(!mv||!mv.storeId||!mv.productId) return;
+    if(!m[mv.storeId]) m[mv.storeId]={};
+    const d=(mv.tipo==='Entrada'?1:-1)*(parseFloat(mv.qty)||0);
+    m[mv.storeId][mv.productId]=(m[mv.storeId][mv.productId]||0)+d;
+  });
+  return m;
+}
+let _recalcDiffs=[];
+function abrirRecalcular(){
+  if(!isAdmin()) return;
+  const ledger=calcLedgerInv();
+  _recalcDiffs=[];
+  ['central','s1','s2'].forEach(st=>{
+    const pids=new Set([...Object.keys(inventory[st]||{}), ...Object.keys(ledger[st]||{})]);
+    pids.forEach(pid=>{
+      const actual=parseFloat((inventory[st]&&inventory[st][pid]&&inventory[st][pid].qty)||0);
+      const segun=Math.max(0, parseFloat((ledger[st]&&ledger[st][pid])||0));
+      if(Math.abs(actual-segun)>0.001){
+        const p=getProduct(pid);
+        _recalcDiffs.push({store:st, pid, name:p?p.name:pid, unit:p?p.unit:'', actual, segun});
+      }
+    });
+  });
+  renderRecalcModal();
+  $('modal-recalc').classList.add('is-open');
+}
+function renderRecalcModal(){
+  const body=$('recalc-body'); if(!body) return;
+  if(!_recalcDiffs.length){
+    body.innerHTML='<div class="empty-state" style="padding:30px"><div class="icon">✅</div><p>Todo cuadra. El inventario coincide con el historial de movimientos.</p></div>';
+    const a=$('recalc-apply'); if(a) a.style.display='none';
+    return;
+  }
+  const a=$('recalc-apply'); if(a) a.style.display='';
+  body.innerHTML=`<p style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.5">Diferencias entre la cantidad actual y la suma del historial de movimientos. Al aplicar, la cantidad se ajusta a la del historial y se reacomodan los lotes.<br><strong>Ojo:</strong> si ves diferencias enormes en casi todo, probablemente el stock inicial no se registró como movimiento — en ese caso no apliques y avísame.</p>
+  <div class="table-wrap"><table><thead><tr><th>Producto</th><th>Ubicación</th><th>Actual</th><th>Según historial</th><th>Dif.</th></tr></thead><tbody>${
+    _recalcDiffs.map(d=>{const dif=d.segun-d.actual;return `<tr><td>${d.name}</td><td>${storeName(d.store)}</td><td>${fmtQty(d.actual,d.unit)}</td><td><strong>${fmtQty(d.segun,d.unit)}</strong></td><td style="color:${dif<0?'var(--danger)':'var(--herb)'}">${dif>0?'+':''}${fmtQty(dif,d.unit)}</td></tr>`}).join('')
+  }</tbody></table></div>`;
+}
+function aplicarRecalculo(){
+  if(!isAdmin()||!_recalcDiffs.length) return;
+  _recalcDiffs.forEach(d=>{
+    if(!inventory[d.store]) inventory[d.store]={};
+    const inv=inventory[d.store][d.pid]||{qty:0,lots:[]};
+    reconciliarLotes(inv, d.segun);
+    inventory[d.store][d.pid]=inv;
+  });
+  saveData();
+  cerrarModal('modal-recalc');
+  showToast('✅ Inventario reconciliado con el historial');
+  renderInventario();
 }
 function getTotalInv(productId){return (getStoreInv('central',productId).qty||0)+(getStoreInv('s1',productId).qty||0)+(getStoreInv('s2',productId).qty||0)}
 function getStoreTotal(productId){return (getStoreInv('s1',productId).qty||0)+(getStoreInv('s2',productId).qty||0)} // solo tiendas de venta
@@ -1901,6 +1987,7 @@ function setHistorialFiltro(store){
 function renderInventario(){
   const sid=activeStoreId();
   const filt=$('inv-store-filter');
+  const rb=$('btn-recalc-inv'); if(rb) rb.style.display=isAdmin()?'':'none';
   if(isAdmin()){
     const cur=sid||'';
     filt.innerHTML=`<select onchange="renderInvTable(this.value)" id="inv-store-sel" style="min-height:30px;padding:3px 8px;width:auto">
