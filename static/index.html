@@ -1904,7 +1904,8 @@ function registrarVenta(){
     movimientos.push({id:'MV'+uid(),storeId:sid,tipo:'Salida',productId:c.productId,qty:c.qty,motivo:'Venta',ref:'',userId:state.user.id,fecha:nowISO()});
     return {productId:c.productId,name:p.name,qty:c.qty,unit:p.unit,price,tipo:isMayoreo?'mayoreo':'normal',sub};
   });
-  const folio='V-'+String(sales.length+1).padStart(3,'0');
+  const prefFolio=sid==='s1'?'C':sid==='s2'?'N':'V';   // folio por tienda: Centro / Norte
+  const folio=prefFolio+'-'+String(sales.filter(s=>s.storeId===sid).length+1).padStart(3,'0');
   sales.push({id:uid(),storeId:sid,userId:state.user.id,folio,fecha:nowISO(),hora:nowTime(),cliente:$('venta-cliente')?.value||'',pago:$('venta-pago')?.value||'Efectivo',items,total});
   state.cart=[];
   saveData();
@@ -2700,11 +2701,17 @@ function eliminarProducto(id){
   const p=getProduct(id); if(!p) return;
   // Remove from products
   products=products.filter(pr=>pr.id!==id);
-  // Remove from inventory in all stores
+  // Registrar la baja en el historial y quitar del inventario en todas las ubicaciones
   STORES.forEach(s=>{
-    if(inventory[s.id]) delete inventory[s.id][id];
+    const inv=inventory[s.id]&&inventory[s.id][id];
+    if(inv){
+      if((inv.qty||0)>0){
+        movimientos.push({id:'MV'+uid(),storeId:s.id,tipo:'Salida',productId:id,qty:inv.qty,motivo:'Baja de producto',ref:'',userId:state.user?.id,fecha:nowISO()});
+      }
+      delete inventory[s.id][id];
+    }
   });
-  // Note: we keep movimientos/mermaList/sales history for traceability (just show name as 'Producto eliminado')
+  // Conservamos movimientos/mermaList/sales para trazabilidad (el nombre se muestra como id si el producto ya no existe)
   saveData();
   showToast(`Producto "${p.name}" eliminado`);
   renderProductos();
