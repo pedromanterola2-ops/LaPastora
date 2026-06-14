@@ -1174,6 +1174,29 @@ function formatHora(iso){if(!iso)return'—';return new Date(iso).toLocaleTimeSt
 function daysUntil(dateStr){if(!dateStr)return 999;const diff=new Date(dateStr)-new Date(today());return Math.round(diff/86400000)}
 function getProduct(id){return products.find(p=>p.id===id)}
 function getStoreInv(storeId,productId){return inventory[storeId]?.[productId]||{qty:0,lots:[]}}
+// ── Lotes FIFO: consume `qty` de los lotes de `inv` (primero el que vence antes).
+//    Baja inv.qty y inv.lots; devuelve los lotes consumidos (para traslados). ──
+function consumirLotesFIFO(inv, qty){
+  const consumidos=[];
+  let restante=qty;
+  const lots=(inv.lots||[]).slice().sort((a,b)=>{
+    const da=a.expiry?new Date(a.expiry).getTime():Infinity;
+    const db=b.expiry?new Date(b.expiry).getTime():Infinity;
+    return da-db;
+  });
+  for(const l of lots){
+    if(restante<=0.0001) break;
+    const take=Math.min(l.qty||0, restante);
+    if(take>0){
+      consumidos.push({id:l.id, qty:parseFloat(take.toFixed(3)), expiry:l.expiry, cost:l.cost});
+      l.qty=parseFloat(((l.qty||0)-take).toFixed(3));
+      restante=parseFloat((restante-take).toFixed(3));
+    }
+  }
+  inv.lots=lots.filter(l=>(l.qty||0)>0.0001);
+  inv.qty=parseFloat(Math.max(0,(inv.qty||0)-qty).toFixed(3));
+  return consumidos;
+}
 function getTotalInv(productId){return (getStoreInv('central',productId).qty||0)+(getStoreInv('s1',productId).qty||0)+(getStoreInv('s2',productId).qty||0)}
 function getStoreTotal(productId){return (getStoreInv('s1',productId).qty||0)+(getStoreInv('s2',productId).qty||0)} // solo tiendas de venta
 function storeName(id){return STORES.find(s=>s.id===id)?.name||id}
@@ -1789,7 +1812,7 @@ function registrarVenta(){
     total+=sub;
     // update inventory
     const inv=inventory[sid][c.productId]||{qty:0,lots:[]};
-    inv.qty=Math.max(0,inv.qty-c.qty);
+    consumirLotesFIFO(inv, c.qty);   // descuenta cantidad y lotes (FIFO por caducidad)
     inventory[sid][c.productId]=inv;
     // movimiento
     movimientos.push({id:'MV'+uid(),storeId:sid,tipo:'Salida',productId:c.productId,qty:c.qty,motivo:'Venta',ref:'',userId:state.user.id,fecha:nowISO()});
@@ -2104,8 +2127,13 @@ function registrarAjuste(){
   const sid=tiendaSel?tiendaSel.value:(activeStoreId()||getUserStore()||'s1');
   const inv=inventory[sid]?.[productId]||{qty:0,lots:[]};
   if(tipo==='Salida'&&qty>inv.qty){showToast('Cantidad mayor al stock disponible en esta tienda','warn');return;}
-  if(tipo==='Entrada') inv.qty=parseFloat((inv.qty+qty).toFixed(3));
-  else inv.qty=parseFloat(Math.max(0,inv.qty-qty).toFixed(3));
+  if(tipo==='Entrada'){
+    inv.qty=parseFloat(((inv.qty||0)+qty).toFixed(3));
+    inv.lots=inv.lots||[];
+    inv.lots.push({id:'AJ-'+uid(), qty:parseFloat(qty.toFixed(3)), expiry:null, cost:(getProduct(productId)?.cost)||0});
+  } else {
+    consumirLotesFIFO(inv, qty);   // salida: descuenta lotes FIFO
+  }
   if(!inventory[sid]) inventory[sid]={};
   inventory[sid][productId]=inv;
   movimientos.push({id:'MV'+uid(),storeId:sid,tipo,productId,qty,motivo,ref:notas,userId:state.user.id,fecha:nowISO()});
@@ -2149,7 +2177,7 @@ function registrarMerma(){
   const cost=(p?.cost||0)*qty;
   const sid=activeStoreId()||getUserStore()||'s1';
   const inv=inventory[sid][productId]||{qty:0,lots:[]};
-  inv.qty=Math.max(0,inv.qty-qty);
+  consumirLotesFIFO(inv, qty);   // descuenta cantidad y lotes (FIFO por caducidad)
   inventory[sid][productId]=inv;
   mermaList.push({id:'M'+uid(),storeId:sid,productId,qty,cost,tipo,desc,fecha,userId:state.user.id});
   movimientos.push({id:'MV'+uid(),storeId:sid,tipo:'Salida',productId,qty,motivo:'Merma',ref:tipo,userId:state.user.id,fecha:nowISO()});
@@ -2350,11 +2378,15 @@ function registrarTraslado(){
   if(!inventory[origen]) inventory[origen]={};
   if(!inventory[destino]) inventory[destino]={};
   const invOrigen=inventory[origen][productId]||{qty:0,lots:[]};
-  invOrigen.qty=Math.max(0,invOrigen.qty-qty);
+  const movidos=consumirLotesFIFO(invOrigen, qty);   // saca lotes FIFO del origen
   inventory[origen][productId]=invOrigen;
-  // update destination
+  // update destination — sube cantidad y recibe los mismos lotes (costo/caducidad)
   const invDest=inventory[destino][productId]||{qty:0,lots:[]};
-  invDest.qty+=qty;
+  invDest.lots=invDest.lots||[];
+  movidos.forEach(l=>invDest.lots.push({id:l.id, qty:l.qty, expiry:l.expiry, cost:l.cost}));
+  const sumMovido=movidos.reduce((a,l)=>a+(l.qty||0),0);
+  if(qty-sumMovido>0.0001){ invDest.lots.push({id:'T-'+uid(), qty:parseFloat((qty-sumMovido).toFixed(3)), expiry:null, cost:(getProduct(productId)?.cost)||0}); }
+  invDest.qty=parseFloat(((invDest.qty||0)+qty).toFixed(3));
   inventory[destino][productId]=invDest;
   // log
   const trasId='T'+uid();
