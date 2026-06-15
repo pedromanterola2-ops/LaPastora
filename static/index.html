@@ -430,7 +430,7 @@ canvas{max-width:100%}
         </div>
         <div id="historial-summary-tienda" class="resumen-dia-banner" style="display:none"></div>
         <div class="table-wrap">
-          <table><thead><tr><th>#</th><th>Hora</th><th id="col-tienda" style="display:none">Tienda</th><th>Cliente</th><th>Productos</th><th>Pago</th><th>Total</th></tr></thead>
+          <table><thead><tr><th>#</th><th>Hora</th><th id="col-tienda" style="display:none">Tienda</th><th>Cliente</th><th>Productos</th><th>Pago</th><th>Total</th><th></th></tr></thead>
           <tbody id="ventas-dia-table"></tbody></table>
         </div>
       </div>
@@ -774,6 +774,32 @@ canvas{max-width:100%}
     <div class="modal-footer">
       <button class="ghost-button" onclick="cerrarModal('modal-cierre')">Cancelar</button>
       <button class="danger-button" onclick="confirmarCierre()">Confirmar cierre del día</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: cancelar venta -->
+<div class="modal-overlay" id="modal-cancelar-venta">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <span class="modal-title">🚫 Cancelar venta</span>
+      <button class="modal-close" onclick="cerrarModal('modal-cancelar-venta')">✕</button>
+    </div>
+    <div id="cancelar-venta-info" style="font-size:13px;color:var(--muted);margin-bottom:12px"></div>
+    <div class="form-group" style="margin-bottom:10px">
+      <label>Motivo de la cancelación</label>
+      <div class="flex-gap" style="flex-wrap:wrap;margin-bottom:8px">
+        <button type="button" class="tiny-button" onclick="setMotivoCancel('Error al registrar')">Error al registrar</button>
+        <button type="button" class="tiny-button" onclick="setMotivoCancel('Producto equivocado')">Producto equivocado</button>
+        <button type="button" class="tiny-button" onclick="setMotivoCancel('Cantidad equivocada')">Cantidad equivocada</button>
+        <button type="button" class="tiny-button" onclick="setMotivoCancel('Cliente canceló')">Cliente canceló</button>
+      </div>
+      <textarea id="cancelar-venta-motivo" rows="2" placeholder="Escribe el motivo..." style="width:100%"></textarea>
+    </div>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:6px">Los productos volverán al inventario y la venta quedará marcada como cancelada (visible para el administrador). No se borra.</p>
+    <div class="modal-footer">
+      <button class="ghost-button" onclick="cerrarModal('modal-cancelar-venta')">Volver</button>
+      <button class="danger-button" onclick="confirmarCancelarVenta()">Confirmar cancelación</button>
     </div>
   </div>
 </div>
@@ -1545,7 +1571,7 @@ function switchTab(page,tab,el){
 // ═══════════════════════════════════════════════
 function renderDashboard(){
   const sid=activeStoreId();
-  const storeSales=sales.filter(s=>!sid||s.storeId===sid);
+  const storeSales=sales.filter(s=>(!sid||s.storeId===sid)&&!s.cancelada);
   const todaySales=storeSales.filter(s=>s.fecha&&s.fecha.startsWith(today()));
   const totalHoy=todaySales.reduce((a,s)=>a+s.total,0);
   const totalMes=storeSales.reduce((a,s)=>a+s.total,0);
@@ -1586,8 +1612,8 @@ function renderDashboard(){
   const comp=$('dash-store-compare');
   if(isAdmin()&&state.viewStore==='all'){
     comp.style.display='block';
-    const s1s=sales.filter(s=>s.storeId==='s1');
-    const s2s=sales.filter(s=>s.storeId==='s2');
+    const s1s=sales.filter(s=>s.storeId==='s1'&&!s.cancelada);
+    const s2s=sales.filter(s=>s.storeId==='s2'&&!s.cancelada);
     const s1t=s1s.reduce((a,s)=>a+s.total,0);
     const s2t=s2s.reduce((a,s)=>a+s.total,0);
     const s1m=mermaList.filter(m=>m.storeId==='s1').reduce((a,m)=>a+m.cost,0);
@@ -1661,7 +1687,7 @@ function renderVentasChart(sid){
     const d=new Date(today()); d.setDate(d.getDate()-i);
     const ds=d.toISOString().split('T')[0];
     labels.push(d.toLocaleDateString('es-MX',{weekday:'short',day:'numeric'}));
-    const total=sales.filter(s=>s.fecha&&s.fecha.startsWith(ds)&&(!sid||s.storeId===sid)).reduce((a,s)=>a+s.total,0);
+    const total=sales.filter(s=>s.fecha&&s.fecha.startsWith(ds)&&(!sid||s.storeId===sid)&&!s.cancelada).reduce((a,s)=>a+s.total,0);
     data.push(total);
   }
   window._chartVentas=new Chart(ctx,{type:'bar',data:{labels,datasets:[{data,backgroundColor:'rgba(99,118,91,.7)',borderRadius:5,borderSkipped:false}]},options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{callback:v=>'$'+v.toLocaleString('es-MX')}},x:{grid:{display:false}}}}});
@@ -1777,7 +1803,7 @@ function confirmarCierre(){
   renderCajaWall();
 }
 function getVentasDia(sid){
-  return sales.filter(s=>s.storeId===sid&&s.fecha&&s.fecha.startsWith(today()));
+  return sales.filter(s=>s.storeId===sid&&s.fecha&&s.fecha.startsWith(today())&&!s.cancelada);
 }
 
 // ═══════════════════════════════════════════════
@@ -1919,13 +1945,14 @@ function renderVentasDia(sid){
   const adminAll=isAdmin();
   let vd;
   if(adminAll){
-    // Admin: solo ventas de HOY, filtradas por tienda
+    // Admin: solo ventas de HOY, filtradas por tienda (incluye canceladas, marcadas)
     const sf=state.historialFiltroStore;
     vd=[...sales].filter(s=>s.fecha&&s.fecha.startsWith(today())&&(sf==='all'||s.storeId===sf)).sort((a,b)=>new Date(b.fecha)-new Date(a.fecha));
   } else {
-    // Tienda: todas las ventas de su tienda del día de hoy (todo el día, no solo sesión actual)
-    vd=getVentasDia(sid).sort((a,b)=>new Date(b.fecha)-new Date(a.fecha));
+    // Tienda: todas las ventas de su tienda del día de hoy (incluye canceladas, marcadas)
+    vd=[...sales].filter(s=>s.storeId===sid&&s.fecha&&s.fecha.startsWith(today())).sort((a,b)=>new Date(b.fecha)-new Date(a.fecha));
   }
+  const vdOK=vd.filter(s=>!s.cancelada); // solo ventas válidas para totales
 
   // show/hide columna tienda
   const colTienda=$('col-tienda');
@@ -1944,42 +1971,98 @@ function renderVentasDia(sid){
     </div>`;
   } else if(hf){ hf.innerHTML=''; }
 
-  const totalDia=vd.reduce((a,v)=>a+v.total,0);
+  const totalDia=vdOK.reduce((a,v)=>a+v.total,0);
+  const nCancel=vd.length-vdOK.length;
   const dt=$('dia-totales');
-  if(dt) dt.innerHTML=`<strong>${fmt(totalDia)}</strong> en ${vd.length} venta(s)`;
+  if(dt) dt.innerHTML=`<strong>${fmt(totalDia)}</strong> en ${vdOK.length} venta(s)${nCancel?` · <span class="text-danger">${nCancel} cancelada(s)</span>`:''}`;
 
   // Banner resumen para tiendas
   const sb=$('historial-summary-tienda');
   if(sb&&!adminAll){
-    const ef=vd.filter(v=>v.pago==='Efectivo').reduce((a,v)=>a+v.total,0);
-    const tj=vd.filter(v=>v.pago==='Tarjeta').reduce((a,v)=>a+v.total,0);
-    const tr=vd.filter(v=>v.pago==='Transferencia').reduce((a,v)=>a+v.total,0);
-    const tprom=vd.length?fmt(totalDia/vd.length):'—';
+    const ef=vdOK.filter(v=>v.pago==='Efectivo').reduce((a,v)=>a+v.total,0);
+    const tj=vdOK.filter(v=>v.pago==='Tarjeta').reduce((a,v)=>a+v.total,0);
+    const tr=vdOK.filter(v=>v.pago==='Transferencia').reduce((a,v)=>a+v.total,0);
+    const tprom=vdOK.length?fmt(totalDia/vdOK.length):'—';
     sb.style.display='';
     sb.innerHTML=`
       <div class="resumen-dia-row"><span style="font-weight:700">💰 Total del día</span><strong class="text-copper" style="font-size:16px">${fmt(totalDia)}</strong></div>
-      <div class="resumen-dia-row"><span>Ventas registradas</span><strong>${vd.length}</strong></div>
+      <div class="resumen-dia-row"><span>Ventas registradas</span><strong>${vdOK.length}</strong></div>
       <div class="resumen-dia-row"><span>Ticket promedio</span><span>${tprom}</span></div>
+      ${nCancel?`<div class="resumen-dia-row muted"><span>🚫 Canceladas</span><span class="text-danger">${nCancel}</span></div>`:''}
       ${ef>0?`<div class="resumen-dia-row muted"><span>💵 Efectivo</span><span>${fmt(ef)}</span></div>`:''}
       ${tj>0?`<div class="resumen-dia-row muted"><span>💳 Tarjeta</span><span>${fmt(tj)}</span></div>`:''}
       ${tr>0?`<div class="resumen-dia-row muted"><span>📱 Transferencia</span><span>${fmt(tr)}</span></div>`:''}
     `;
   } else if(sb){ sb.style.display='none'; }
 
-  const cols=adminAll?7:6;
-  t.innerHTML=vd.map(v=>`<tr>
+  const cols=adminAll?8:7;
+  t.innerHTML=vd.map(v=>{
+    const canc=!!v.cancelada;
+    const puedeCancelar=!canc&&(isAdmin()||(v.userId===state.user?.id&&v.fecha&&v.fecha.startsWith(today())));
+    const prodTxt=v.items.map(i=>`${i.qty} ${i.unit} ${i.name}`).join(', ');
+    const accion=canc
+      ? `<span class="chip" style="background:rgba(168,61,52,.12);color:var(--danger)">🚫 Cancelada</span>`
+      : (puedeCancelar?`<button class="tiny-button" style="color:var(--danger);border-color:var(--danger)" onclick="abrirCancelarVenta('${v.id}')">Cancelar</button>`:'—');
+    return `<tr${canc?' style="opacity:.6"':''}>
     <td class="lot-code">${v.folio}</td>
     <td>${v.hora||formatHora(v.fecha)}</td>
     ${adminAll?`<td><span class="chip ${v.storeId}">${storeShort(v.storeId)}</span></td>`:''}
     <td>${v.cliente||'—'}</td>
-    <td style="max-width:200px;white-space:normal">${v.items.map(i=>`${i.qty} ${i.unit} ${i.name}`).join(', ')}</td>
+    <td style="max-width:200px;white-space:normal">${canc?`<s>${prodTxt}</s><br><small class="text-danger">Motivo: ${v.motivoCancel||'—'}${v.canceladaPorNombre?` · por ${v.canceladaPorNombre}`:''}</small>`:prodTxt}</td>
     <td><span class="chip">${v.pago}</span></td>
-    <td class="text-copper">${fmt(v.total)}</td>
-  </tr>`).join('')||`<tr><td colspan="${cols}" class="text-muted" style="text-align:center;padding:20px">Sin ventas registradas</td></tr>`;
+    <td class="text-copper">${canc?`<s>${fmt(v.total)}</s>`:fmt(v.total)}</td>
+    <td>${accion}</td>
+  </tr>`;}).join('')||`<tr><td colspan="${cols}" class="text-muted" style="text-align:center;padding:20px">Sin ventas registradas</td></tr>`;
 }
 function setHistorialFiltro(store){
   state.historialFiltroStore=store;
   renderVentasDia(activeStoreId()||'s1');
+}
+// ── Cancelación de venta ──
+function setMotivoCancel(txt){const m=$('cancelar-venta-motivo');if(m)m.value=txt;}
+function abrirCancelarVenta(id){
+  const v=sales.find(s=>s.id===id);
+  if(!v){showToast('No se encontró la venta','warn');return;}
+  if(v.cancelada){showToast('Esta venta ya está cancelada','warn');return;}
+  // permiso: admin cualquiera; vendedor solo la suya y del día
+  const propia=v.userId===state.user?.id&&v.fecha&&v.fecha.startsWith(today());
+  if(!isAdmin()&&!propia){showToast('Solo puedes cancelar tus ventas del día','warn');return;}
+  const m=$('cancelar-venta-motivo'); if(m) m.value='';
+  const info=$('cancelar-venta-info');
+  if(info) info.innerHTML=`Venta <strong>${v.folio}</strong> · ${fmt(v.total)}<br>${v.items.map(i=>`${i.qty} ${i.unit} ${i.name}`).join(', ')}`;
+  $('modal-cancelar-venta').dataset.id=id;
+  $('modal-cancelar-venta').classList.add('is-open');
+}
+function confirmarCancelarVenta(){
+  const id=$('modal-cancelar-venta').dataset.id;
+  const motivo=($('cancelar-venta-motivo')?.value||'').trim();
+  if(!motivo){showToast('Escribe el motivo de la cancelación','warn');return;}
+  cancelarVenta(id,motivo);
+  cerrarModal('modal-cancelar-venta');
+}
+function cancelarVenta(id,motivo){
+  const v=sales.find(s=>s.id===id);
+  if(!v||v.cancelada) return;
+  const propia=v.userId===state.user?.id&&v.fecha&&v.fecha.startsWith(today());
+  if(!isAdmin()&&!propia){showToast('No tienes permiso para cancelar esta venta','warn');return;}
+  // Reponer inventario: devolver cada producto a la tienda de la venta (lote nuevo + movimiento de entrada)
+  v.items.forEach(it=>{
+    const inv=inventory[v.storeId][it.productId]||{qty:0,lots:[]};
+    inv.qty=parseFloat(((inv.qty||0)+it.qty).toFixed(3));
+    inv.lots=inv.lots||[];
+    inv.lots.push({id:'CAN-'+uid(), qty:parseFloat(it.qty.toFixed(3)), expiry:null, cost:(getProduct(it.productId)?.cost)||it.price||0});
+    inventory[v.storeId][it.productId]=inv;
+    movimientos.push({id:'MV'+uid(),storeId:v.storeId,tipo:'Entrada',productId:it.productId,qty:it.qty,motivo:'Cancelación de venta',ref:v.folio,userId:state.user.id,fecha:nowISO()});
+  });
+  v.cancelada=true;
+  v.motivoCancel=motivo;
+  v.canceladaPor=state.user?.id;
+  v.canceladaPorNombre=state.user?.name||(usuarios.find(u=>u.id===state.user?.id)?.name)||'';
+  v.canceladaFecha=nowISO();
+  saveData();
+  showToast(`🚫 Venta ${v.folio} cancelada — inventario repuesto`);
+  renderVentasDia(activeStoreId()||v.storeId);
+  renderTopbar();
 }
 
 // ═══════════════════════════════════════════════
@@ -2960,7 +3043,7 @@ function renderReportesTab(tab){
 function renderRepVentas(sid){
   const kpis=$('rep-ventas-kpis'); if(!kpis) return;
   // No-admin solo ve ventas del día de hoy
-  const storeSales=sales.filter(s=>(!sid||s.storeId===sid)&&(isAdmin()||s.fecha.startsWith(today())));
+  const storeSales=sales.filter(s=>(!sid||s.storeId===sid)&&(isAdmin()||s.fecha.startsWith(today()))&&!s.cancelada);
   const total=storeSales.reduce((a,s)=>a+s.total,0);
   const ticket=storeSales.length?total/storeSales.length:0;
   const topProd={};
@@ -2984,7 +3067,7 @@ function renderRepVentas(sid){
       const d=new Date(today()); d.setDate(d.getDate()-i);
       const ds=d.toISOString().split('T')[0];
       labels30.push(i%5===0?d.toLocaleDateString('es-MX',{day:'numeric',month:'short'}):'');
-      data30.push(sales.filter(s=>s.fecha&&s.fecha.startsWith(ds)&&(!sid||s.storeId===sid)).reduce((a,s)=>a+s.total,0));
+      data30.push(sales.filter(s=>s.fecha&&s.fecha.startsWith(ds)&&(!sid||s.storeId===sid)&&!s.cancelada).reduce((a,s)=>a+s.total,0));
     }
     window._cRepVentas=new Chart(ctx30,{type:'line',data:{labels:labels30,datasets:[{data:data30,borderColor:'rgba(99,118,91,1)',backgroundColor:'rgba(99,118,91,.1)',fill:true,tension:.3,pointRadius:2}]},options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{callback:v=>'$'+v.toLocaleString('es-MX')}},x:{grid:{display:false}}}}});
   }
@@ -2998,7 +3081,7 @@ function renderRepVentas(sid){
 }
 function renderRepMargen(sid){
   const kpis=$('rep-margen-kpis'); if(!kpis) return;
-  const storeSales=sales.filter(s=>!sid||s.storeId===sid);
+  const storeSales=sales.filter(s=>(!sid||s.storeId===sid)&&!s.cancelada);
   const totalVentas=storeSales.reduce((a,s)=>a+s.total,0);
   const costoTotal=storeSales.reduce((a,s)=>a+s.items.reduce((b,i)=>{const p=getProduct(i.productId);return b+(p?.cost||0)*i.qty;},0),0);
   const margenBruto=totalVentas>0?Math.round((totalVentas-costoTotal)/totalVentas*100):0;
@@ -3044,8 +3127,8 @@ function renderRepMerma(sid){
 }
 function renderRepComparativa(){
   const div=$('rep-comparativa-content'); if(!div) return;
-  const s1s=sales.filter(s=>s.storeId==='s1');
-  const s2s=sales.filter(s=>s.storeId==='s2');
+  const s1s=sales.filter(s=>s.storeId==='s1'&&!s.cancelada);
+  const s2s=sales.filter(s=>s.storeId==='s2'&&!s.cancelada);
   const s1t=s1s.reduce((a,s)=>a+s.total,0);
   const s2t=s2s.reduce((a,s)=>a+s.total,0);
   const s1m=mermaList.filter(m=>m.storeId==='s1').reduce((a,m)=>a+m.cost,0);
