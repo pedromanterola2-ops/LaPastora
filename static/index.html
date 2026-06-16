@@ -1200,7 +1200,11 @@ const $=id=>document.getElementById(id);
 const fmt=n=>'$'+parseFloat(n||0).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2});
 const fmtQty=(n,unit)=>parseFloat(n||0).toFixed(unit==='piezas'?0:2)+' '+unit;
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6)}
-function today(){return new Date().toISOString().split('T')[0]}
+// localDate: fecha de calendario LOCAL (zona horaria del dispositivo), formato YYYY-MM-DD.
+// Acepta una fecha ISO (timestamp de venta), un objeto Date, o nada (= ahora).
+// El día corre de 00:00 a 23:59 hora local, no UTC.
+function localDate(x){const d=x?new Date(x):new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
+function today(){return localDate()}
 // Devuelve el precio efectivo de un producto para una tienda (sobreprecio por tienda si existe, si no el precio base)
 function getStorePrecio(p,storeId,tipo='normal'){
   if(!p) return 0;
@@ -1502,7 +1506,7 @@ function renderTopbar(){
     ci.innerHTML='';
     ta.innerHTML=`<button class="ghost-button" onclick="goTo('ventas',null)">Nueva venta</button>
       <button class="primary-button" onclick="goTo('compras',null)">+ Compra</button>
-      <button class="ghost-button" title="Reiniciar datos demo" onclick="resetApp()" style="border-color:rgba(168,61,52,.3);color:var(--danger);padding:8px 10px">🗑️</button>`;
+      <button class="ghost-button" title="Reiniciar datos (borra todo — requiere confirmación)" onclick="resetApp()" style="border-color:rgba(168,61,52,.3);color:var(--danger);padding:8px 10px">🗑️</button>`;
   } else {
     sw.innerHTML='';
     const sid=getUserStore();
@@ -1572,7 +1576,7 @@ function switchTab(page,tab,el){
 function renderDashboard(){
   const sid=activeStoreId();
   const storeSales=sales.filter(s=>(!sid||s.storeId===sid)&&!s.cancelada);
-  const todaySales=storeSales.filter(s=>s.fecha&&s.fecha.startsWith(today()));
+  const todaySales=storeSales.filter(s=>s.fecha&&localDate(s.fecha)===today());
   const totalHoy=todaySales.reduce((a,s)=>a+s.total,0);
   const totalMes=storeSales.reduce((a,s)=>a+s.total,0);
   const mermas=mermaList.filter(m=>!sid||m.storeId===sid);
@@ -1684,10 +1688,10 @@ function renderVentasChart(sid){
   if(window._chartVentas) window._chartVentas.destroy();
   const days=7; const labels=[]; const data=[];
   for(let i=days-1;i>=0;i--){
-    const d=new Date(today()); d.setDate(d.getDate()-i);
-    const ds=d.toISOString().split('T')[0];
+    const d=new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate()-i);
+    const ds=localDate(d);
     labels.push(d.toLocaleDateString('es-MX',{weekday:'short',day:'numeric'}));
-    const total=sales.filter(s=>s.fecha&&s.fecha.startsWith(ds)&&(!sid||s.storeId===sid)&&!s.cancelada).reduce((a,s)=>a+s.total,0);
+    const total=sales.filter(s=>s.fecha&&localDate(s.fecha)===ds&&(!sid||s.storeId===sid)&&!s.cancelada).reduce((a,s)=>a+s.total,0);
     data.push(total);
   }
   window._chartVentas=new Chart(ctx,{type:'bar',data:{labels,datasets:[{data,backgroundColor:'rgba(99,118,91,.7)',borderRadius:5,borderSkipped:false}]},options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{callback:v=>'$'+v.toLocaleString('es-MX')}},x:{grid:{display:false}}}}});
@@ -1803,7 +1807,10 @@ function confirmarCierre(){
   renderCajaWall();
 }
 function getVentasDia(sid){
-  return sales.filter(s=>s.storeId===sid&&s.fecha&&s.fecha.startsWith(today())&&!s.cancelada);
+  // Ventas del TURNO actual: desde que se abrió la caja. Se vacía al cerrar el corte.
+  // Si no hay caja abierta, cae al día calendario local como respaldo.
+  const desde=cajaActiva[sid]?.abierta;
+  return sales.filter(s=>s.storeId===sid&&!s.cancelada&&s.fecha&&(desde?new Date(s.fecha)>=new Date(desde):localDate(s.fecha)===today()));
 }
 
 // ═══════════════════════════════════════════════
@@ -1947,10 +1954,11 @@ function renderVentasDia(sid){
   if(adminAll){
     // Admin: solo ventas de HOY, filtradas por tienda (incluye canceladas, marcadas)
     const sf=state.historialFiltroStore;
-    vd=[...sales].filter(s=>s.fecha&&s.fecha.startsWith(today())&&(sf==='all'||s.storeId===sf)).sort((a,b)=>new Date(b.fecha)-new Date(a.fecha));
+    vd=[...sales].filter(s=>s.fecha&&localDate(s.fecha)===today()&&(sf==='all'||s.storeId===sf)).sort((a,b)=>new Date(b.fecha)-new Date(a.fecha));
   } else {
-    // Tienda: todas las ventas de su tienda del día de hoy (incluye canceladas, marcadas)
-    vd=[...sales].filter(s=>s.storeId===sid&&s.fecha&&s.fecha.startsWith(today())).sort((a,b)=>new Date(b.fecha)-new Date(a.fecha));
+    // Tienda: ventas del TURNO actual (desde que abrió la caja); se vacía al cerrar el corte. Incluye canceladas, marcadas.
+    const desde=cajaActiva[sid]?.abierta;
+    vd=[...sales].filter(s=>s.storeId===sid&&s.fecha&&(desde?new Date(s.fecha)>=new Date(desde):localDate(s.fecha)===today())).sort((a,b)=>new Date(b.fecha)-new Date(a.fecha));
   }
   const vdOK=vd.filter(s=>!s.cancelada); // solo ventas válidas para totales
 
@@ -1998,7 +2006,7 @@ function renderVentasDia(sid){
   const cols=adminAll?8:7;
   t.innerHTML=vd.map(v=>{
     const canc=!!v.cancelada;
-    const puedeCancelar=!canc&&(isAdmin()||(v.userId===state.user?.id&&v.fecha&&v.fecha.startsWith(today())));
+    const puedeCancelar=!canc&&(isAdmin()||(v.userId===state.user?.id&&v.fecha&&localDate(v.fecha)===today()));
     const prodTxt=v.items.map(i=>`${i.qty} ${i.unit} ${i.name}`).join(', ');
     const accion=canc
       ? `<span class="chip" style="background:rgba(168,61,52,.12);color:var(--danger)">🚫 Cancelada</span>`
@@ -2025,7 +2033,7 @@ function abrirCancelarVenta(id){
   if(!v){showToast('No se encontró la venta','warn');return;}
   if(v.cancelada){showToast('Esta venta ya está cancelada','warn');return;}
   // permiso: admin cualquiera; vendedor solo la suya y del día
-  const propia=v.userId===state.user?.id&&v.fecha&&v.fecha.startsWith(today());
+  const propia=v.userId===state.user?.id&&v.fecha&&localDate(v.fecha)===today();
   if(!isAdmin()&&!propia){showToast('Solo puedes cancelar tus ventas del día','warn');return;}
   const m=$('cancelar-venta-motivo'); if(m) m.value='';
   const info=$('cancelar-venta-info');
@@ -2043,7 +2051,7 @@ function confirmarCancelarVenta(){
 function cancelarVenta(id,motivo){
   const v=sales.find(s=>s.id===id);
   if(!v||v.cancelada) return;
-  const propia=v.userId===state.user?.id&&v.fecha&&v.fecha.startsWith(today());
+  const propia=v.userId===state.user?.id&&v.fecha&&localDate(v.fecha)===today();
   if(!isAdmin()&&!propia){showToast('No tienes permiso para cancelar esta venta','warn');return;}
   // Reponer inventario: devolver cada producto a la tienda de la venta (lote nuevo + movimiento de entrada)
   v.items.forEach(it=>{
@@ -3043,7 +3051,7 @@ function renderReportesTab(tab){
 function renderRepVentas(sid){
   const kpis=$('rep-ventas-kpis'); if(!kpis) return;
   // No-admin solo ve ventas del día de hoy
-  const storeSales=sales.filter(s=>(!sid||s.storeId===sid)&&(isAdmin()||s.fecha.startsWith(today()))&&!s.cancelada);
+  const storeSales=sales.filter(s=>(!sid||s.storeId===sid)&&(isAdmin()||localDate(s.fecha)===today())&&!s.cancelada);
   const total=storeSales.reduce((a,s)=>a+s.total,0);
   const ticket=storeSales.length?total/storeSales.length:0;
   const topProd={};
@@ -3064,10 +3072,10 @@ function renderRepVentas(sid){
     if(window._cRepVentas) window._cRepVentas.destroy();
     const labels30=[]; const data30=[];
     for(let i=29;i>=0;i--){
-      const d=new Date(today()); d.setDate(d.getDate()-i);
-      const ds=d.toISOString().split('T')[0];
+      const d=new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate()-i);
+      const ds=localDate(d);
       labels30.push(i%5===0?d.toLocaleDateString('es-MX',{day:'numeric',month:'short'}):'');
-      data30.push(sales.filter(s=>s.fecha&&s.fecha.startsWith(ds)&&(!sid||s.storeId===sid)&&!s.cancelada).reduce((a,s)=>a+s.total,0));
+      data30.push(sales.filter(s=>s.fecha&&localDate(s.fecha)===ds&&(!sid||s.storeId===sid)&&!s.cancelada).reduce((a,s)=>a+s.total,0));
     }
     window._cRepVentas=new Chart(ctx30,{type:'line',data:{labels:labels30,datasets:[{data:data30,borderColor:'rgba(99,118,91,1)',backgroundColor:'rgba(99,118,91,.1)',fill:true,tension:.3,pointRadius:2}]},options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{callback:v=>'$'+v.toLocaleString('es-MX')}},x:{grid:{display:false}}}}});
   }
@@ -3274,24 +3282,50 @@ function resetApp(){
   box.innerHTML=`
     <div style="font-size:40px;margin-bottom:10px">🗑️</div>
     <h3 style="font-size:17px;font-weight:800;margin-bottom:8px;color:#2b211a">Reiniciar datos</h3>
-    <p style="font-size:13px;color:#75695d;line-height:1.55;margin-bottom:20px">
-      Elige cómo quieres comenzar.<br>Esta acción no se puede deshacer.
+    <p style="font-size:13px;color:#75695d;line-height:1.55;margin-bottom:14px">
+      Esto <strong>borra todos los datos de las dos tiendas</strong> en la nube y no se puede deshacer.<br>
+      Se guardará un respaldo automático antes de borrar.
     </p>
+    <div style="text-align:left;margin-bottom:8px">
+      <label style="font-size:12px;font-weight:700;color:#a83d34">Escribe BORRAR para confirmar</label>
+      <input id="reset-confirm" type="text" autocomplete="off" placeholder="BORRAR"
+        style="width:100%;margin-top:5px;padding:9px 11px;border:1px solid rgba(168,61,52,.4);border-radius:8px;font-family:inherit;font-size:14px;letter-spacing:1px;text-transform:uppercase">
+    </div>
+    <p id="reset-status" style="font-size:12px;color:#75695d;min-height:16px;margin-bottom:12px"></p>
     <div style="display:grid;gap:9px">
-      <button id="rbtn-demo"  style="width:100%;padding:11px 16px;border-radius:8px;border:1px solid #31483a;background:#31483a;color:#fffaf1;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">🔄 Cargar datos de demostración</button>
-      <button id="rbtn-empty" style="width:100%;padding:11px 16px;border-radius:8px;border:1px solid rgba(168,61,52,.4);background:rgba(168,61,52,.07);color:#a83d34;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">✕ Empezar completamente en blanco</button>
+      <button id="rbtn-demo"  disabled style="width:100%;padding:11px 16px;border-radius:8px;border:1px solid #31483a;background:#31483a;color:#fffaf1;font-size:13px;font-weight:600;cursor:not-allowed;opacity:.45;font-family:inherit">🔄 Cargar datos de demostración</button>
+      <button id="rbtn-empty" disabled style="width:100%;padding:11px 16px;border-radius:8px;border:1px solid rgba(168,61,52,.4);background:rgba(168,61,52,.07);color:#a83d34;font-size:13px;font-weight:600;cursor:not-allowed;opacity:.45;font-family:inherit">✕ Empezar completamente en blanco</button>
       <button id="rbtn-cancel" style="width:100%;padding:9px 16px;border-radius:8px;border:1px solid rgba(62,45,31,.26);background:#fffdf7;color:#75695d;font-size:13px;cursor:pointer;font-family:inherit">Cancelar</button>
     </div>`;
   overlay.appendChild(box);
   document.body.appendChild(overlay);
 
-  box.querySelector('#rbtn-demo').onclick=async ()=>{
+  const inp=box.querySelector('#reset-confirm');
+  const bd=box.querySelector('#rbtn-demo');
+  const be=box.querySelector('#rbtn-empty');
+  const status=box.querySelector('#reset-status');
+  const confirmado=()=>inp.value.trim().toUpperCase()==='BORRAR';
+  const sync=()=>{
+    const ok=confirmado();
+    [bd,be].forEach(b=>{b.disabled=!ok;b.style.opacity=ok?'1':'.45';b.style.cursor=ok?'pointer':'not-allowed';});
+  };
+  inp.oninput=sync; sync(); inp.focus();
+
+  bd.onclick=async ()=>{
+    if(!confirmado()) return;
+    bd.disabled=be.disabled=true; status.textContent='Guardando respaldo…';
+    await respaldarAntesDeReset();
+    status.textContent='Reiniciando…';
     localStorage.removeItem('lp_data');
     initDemoData();
     await cloudPush(true);       // sobrescribe la nube con el reinicio (sin re-fusionar lo viejo)
     location.reload();
   };
-  box.querySelector('#rbtn-empty').onclick=async ()=>{
+  be.onclick=async ()=>{
+    if(!confirmado()) return;
+    bd.disabled=be.disabled=true; status.textContent='Guardando respaldo…';
+    await respaldarAntesDeReset();
+    status.textContent='Borrando…';
     applyData({
       products:[],categories:['Quesos frescos','Quesos maduros','Cremas','Otros derivados'],
       inventory:{central:{},s1:{},s2:{}},sales:[],purchases:[],
@@ -3683,6 +3717,16 @@ async function cloudPush(overwrite){
     if(error){ console.warn('[nube] push falló:', error.message); setCloudBadge('offline'); }
     else { if(pushPending){ pushPending=false; } try{localStorage.setItem('lp_data',JSON.stringify(collectData()));}catch(e){} setCloudBadge('online'); }
   }catch(e){ console.warn('[nube] push error', e); setCloudBadge('offline'); }
+}
+
+// ── Respaldo de seguridad antes de un reinicio destructivo ──
+// Guarda el estado actual en la fila 'lp_backup' de la nube (último respaldo recuperable).
+async function respaldarAntesDeReset(){
+  if(!cloudOK || !supa) return false;
+  try{
+    await supa.from(CLOUD_TABLE).upsert({ id:'lp_backup', data:collectData(), origin:CLIENT_ID, updated_at:new Date().toISOString() });
+    return true;
+  }catch(e){ console.warn('[nube] respaldo falló:', e); return false; }
 }
 
 // ── Empuje con retraso (agrupa cambios rápidos en una sola escritura) ──
