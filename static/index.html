@@ -1938,7 +1938,10 @@ function registrarVenta(){
     return {productId:c.productId,name:p.name,qty:c.qty,unit:p.unit,price,tipo:isMayoreo?'mayoreo':'normal',sub};
   });
   const prefFolio=sid==='s1'?'C':sid==='s2'?'N':'V';   // folio por tienda: Centro / Norte
-  const folio=prefFolio+'-'+String(sales.filter(s=>s.storeId===sid).length+1).padStart(3,'0');
+  // Folio = número más alto ya usado en esta tienda + 1 (no cuenta, así no se confunde con canceladas ni huecos)
+  const _fnums=sales.filter(s=>s.storeId===sid).map(s=>parseInt(String(s.folio||'').replace(/\D/g,''),10)||0);
+  const _fnext=(_fnums.length?Math.max(..._fnums):0)+1;
+  const folio=prefFolio+'-'+String(_fnext).padStart(3,'0');
   sales.push({id:uid(),storeId:sid,userId:state.user.id,folio,fecha:nowISO(),hora:nowTime(),cliente:$('venta-cliente')?.value||'',pago:$('venta-pago')?.value||'Efectivo',items,total});
   state.cart=[];
   saveData();
@@ -3611,6 +3614,21 @@ function mergeInv(localInv, remoteInv, dir){
   if(!out.central) out.central={};
   return out;
 }
+// ── Caja: cada dispositivo manda en la llave de SU propia tienda ──
+// El vendedor opera su tienda (getUserStore); el admin opera 's1' (la que abre desde su vista).
+// Para la OTRA tienda siempre se toma lo de la nube → nadie pisa la caja del otro punto,
+// y un cierre (null) nunca se pierde porque solo su propio dueño escribe esa llave.
+function cajaStoreOwn(){
+  if(!state || !state.user) return null;
+  return isAdmin() ? 's1' : getUserStore();
+}
+function mergeCaja(remoteCaja){
+  if(!remoteCaja) return;                       // nada remoto → conserva local
+  const merged = { s1: remoteCaja.s1 || null, s2: remoteCaja.s2 || null };
+  const mine = cajaStoreOwn();
+  if(mine === 's1' || mine === 's2') merged[mine] = cajaActiva[mine] || null;  // mi tienda: gana local
+  cajaActiva = merged;
+}
 // Aplica datos REMOTOS entrantes (nube/realtime): fusiona append-only, config = nube manda.
 function mergeRemote(d){
   if(!d) return;
@@ -3624,7 +3642,7 @@ function mergeRemote(d){
   movimientos = mergeArr(movimientos, d.movimientos);
   cajaLog     = mergeArr(cajaLog,     d.cajaLog);
   solicitudes = mergeArr(solicitudes, d.solicitudes);
-  if(d.cajaActiva)            cajaActiva  = d.cajaActiva;
+  mergeCaja(d.cajaActiva);   // caja: cada tienda manda en su propia llave (ver mergeCaja)
   if(d.proveedores)          proveedores = d.proveedores;
   if(d.metas)                metas       = d.metas;
   // `usuarios` ya no viene del blob; se carga de la tabla `perfiles` tras iniciar sesión.
@@ -3709,6 +3727,7 @@ async function cloudPush(overwrite){
         cajaLog     = mergeArr(cajaLog,     r.cajaLog);
         solicitudes = mergeArr(solicitudes, r.solicitudes);
         inventory   = mergeInv(inventory, r.inventory, 'local'); // nuestro cambio gana; conserva claves de la otra tienda
+        mergeCaja(r.cajaActiva);  // caja: conserva la nube para la otra tienda; mi tienda gana
       }
     }catch(e){ console.warn('[nube] pre-merge falló:', e); }
     // 2) Escribe el estado fusionado
