@@ -26,6 +26,7 @@ input,select,textarea{cursor:text}
 #login-screen{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px}
 .login-box{background:var(--raised);border:1px solid var(--line);border-radius:16px;padding:40px;width:460px;max-width:100%;box-shadow:var(--shadow);text-align:center}
 .login-logo{width:64px;height:64px;background:var(--herb);border-radius:14px;display:grid;place-items:center;font-size:28px;margin:0 auto 18px;color:var(--milk)}
+.login-logo-img{display:block;width:280px;max-width:84%;height:auto;margin:0 auto 16px;background:#fff;padding:14px 18px;border-radius:14px;border:1px solid rgba(62,45,31,.08)}
 .login-box h1{font-size:22px;font-weight:800;margin-bottom:4px}
 .login-box p{color:var(--muted);font-size:13px;margin-bottom:28px}
 .user-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:8px}
@@ -328,8 +329,7 @@ canvas{max-width:100%}
 <!-- ══ LOGIN ══ -->
 <div id="login-screen">
   <div class="login-box">
-    <div class="login-logo">🧀</div>
-    <h1>La Pastora</h1>
+    <img src="logo.png" alt="La Pastora — Quesos y Jamones" class="login-logo-img">
     <p>Selecciona tu perfil para entrar</p>
     <div class="user-cards" id="user-cards"></div>
   </div>
