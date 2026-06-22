@@ -820,6 +820,22 @@ canvas{max-width:100%}
   </div>
 </div>
 
+<!-- Modal: eliminar venta (solo admin) -->
+<div class="modal-overlay" id="modal-eliminar-venta">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <span class="modal-title">🗑️ Eliminar venta</span>
+      <button class="modal-close" onclick="cerrarModal('modal-eliminar-venta')">✕</button>
+    </div>
+    <div id="eliminar-venta-info" style="font-size:13px;color:var(--muted);margin-bottom:12px"></div>
+    <p style="font-size:13px;margin-bottom:14px;color:var(--danger);background:rgba(168,61,52,.08);padding:10px 12px;border-radius:8px">⚠️ La venta se borrará del historial y los productos regresarán al inventario. Esta acción no se puede deshacer.</p>
+    <div class="modal-footer">
+      <button class="ghost-button" onclick="cerrarModal('modal-eliminar-venta')">Cancelar</button>
+      <button class="danger-button" onclick="confirmarEliminarVenta()">Sí, eliminar</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══════════════════════ USUARIOS (admin) ══════════════════════ -->
 <div id="page-usuarios" class="page">
   <div class="section-head" style="margin-bottom:16px">
@@ -1107,6 +1123,7 @@ let proveedores = []; // {id,name,tipo,tel,contacto,prod,ciudad,notas,activo,cre
 let usuarios = []; // en memoria, desde tabla `perfiles`: {id,name,role,avatar,storeId,activo} — sin contraseñas
 let metas = { s1:{ diaria:0 }, s2:{ diaria:0 } }; // metas diarias de venta por tienda
 let solicitudes = []; // {id,storeId,userId,status:'pendiente'|'aprobada'|'rechazada',items:[{productId,cantSolicitada,cantAprobada,notas}],notas,fecha,fechaRespuesta,adminId,notasAdmin}
+let deletedSaleIds = []; // IDs de ventas eliminadas permanentemente (para que el merge no las reviva)
 
 function saveData(){
   const d={products,categories,inventory,sales,purchases,mermaList,traslados,movimientos,cajaLog,cajaActiva,proveedores,usuarios,metas,solicitudes};
@@ -1133,6 +1150,7 @@ function loadData(){
     usuarios=d.usuarios&&d.usuarios.length?d.usuarios:[...DEFAULT_USERS];
     metas=d.metas||{s1:{diaria:0},s2:{diaria:0}};
     solicitudes=d.solicitudes||[];
+    deletedSaleIds=d.deletedSaleIds||[];
     // no fallback to demo data — keep whatever was saved (even empty)
   }catch(e){initEmpty();}
 }
@@ -1140,7 +1158,7 @@ function initEmpty(){
   products=[]; categories=['Quesos frescos','Quesos maduros','Cremas','Otros derivados'];
   inventory={central:{},s1:{},s2:{}}; sales=[]; purchases=[]; mermaList=[]; traslados=[];
   movimientos=[]; cajaLog=[]; cajaActiva={s1:null,s2:null}; proveedores=[];
-  usuarios=[...DEFAULT_USERS]; metas={s1:{diaria:0},s2:{diaria:0}}; solicitudes=[];
+  usuarios=[...DEFAULT_USERS]; metas={s1:{diaria:0},s2:{diaria:0}}; solicitudes=[]; deletedSaleIds=[];
   saveData();
 }
 function initDemoData(){
@@ -2025,11 +2043,19 @@ function renderVentasDia(sid){
   const cols=adminAll?8:7;
   t.innerHTML=vd.map(v=>{
     const canc=!!v.cancelada;
-    const puedeCancelar=!canc&&(isAdmin()||(v.userId===state.user?.id&&v.fecha&&localDate(v.fecha)===today()));
+    const puedeCancelar=!canc&&(v.userId===state.user?.id&&v.fecha&&localDate(v.fecha)===today());
     const prodTxt=v.items.map(i=>`${i.qty} ${i.unit} ${i.name}`).join(', ');
-    const accion=canc
-      ? `<span class="chip" style="background:rgba(168,61,52,.12);color:var(--danger)">🚫 Cancelada</span>`
-      : (puedeCancelar?`<button class="tiny-button" style="color:var(--danger);border-color:var(--danger)" onclick="abrirCancelarVenta('${v.id}')">Cancelar</button>`:'—');
+    // Admin: botón Eliminar en todas las ventas (cancele o no)
+    // Vendedor: botón Cancelar solo en sus ventas del turno actual (sin cancelar)
+    let accion;
+    if(isAdmin()){
+      const chipCanc=canc?`<span class="chip" style="background:rgba(168,61,52,.12);color:var(--danger);margin-right:4px">🚫</span>`:'';
+      accion=chipCanc+`<button class="tiny-button" style="color:var(--danger);border-color:var(--danger)" onclick="abrirEliminarVenta('${v.id}')">🗑️ Eliminar</button>`;
+    } else {
+      accion=canc
+        ? `<span class="chip" style="background:rgba(168,61,52,.12);color:var(--danger)">🚫 Cancelada</span>`
+        : (puedeCancelar?`<button class="tiny-button" style="color:var(--danger);border-color:var(--danger)" onclick="abrirCancelarVenta('${v.id}')">Cancelar</button>`:'—');
+    }
     return `<tr${canc?' style="opacity:.6"':''}>
     <td class="lot-code">${v.folio}</td>
     <td>${v.hora||formatHora(v.fecha)}</td>
@@ -2088,6 +2114,49 @@ function cancelarVenta(id,motivo){
   v.canceladaFecha=nowISO();
   saveData();
   showToast(`🚫 Venta ${v.folio} cancelada — inventario repuesto`);
+  renderVentasDia(activeStoreId()||v.storeId);
+  renderTopbar();
+}
+
+// ── Eliminación de venta (solo admin) ──
+function abrirEliminarVenta(id){
+  if(!isAdmin()){showToast('Solo el administrador puede eliminar ventas','warn');return;}
+  const v=sales.find(s=>s.id===id);
+  if(!v){showToast('No se encontró la venta','warn');return;}
+  const info=$('eliminar-venta-info');
+  const yaCancelada=v.cancelada?'<br><small style="color:var(--muted)">(Ya estaba cancelada — el inventario ya fue repuesto. Solo se borrará del historial.)</small>':'';
+  if(info) info.innerHTML=`Venta <strong>${v.folio}</strong> · ${fmt(v.total)}<br><span style="color:var(--muted)">${v.items.map(i=>`${i.qty} ${i.unit} ${i.name}`).join(', ')}</span>${yaCancelada}`;
+  $('modal-eliminar-venta').dataset.id=id;
+  $('modal-eliminar-venta').classList.add('is-open');
+}
+function confirmarEliminarVenta(){
+  const id=$('modal-eliminar-venta').dataset.id;
+  eliminarVenta(id);
+  cerrarModal('modal-eliminar-venta');
+}
+function eliminarVenta(id){
+  if(!isAdmin()){showToast('Solo el administrador puede eliminar ventas','warn');return;}
+  const v=sales.find(s=>s.id===id);
+  if(!v){showToast('No se encontró la venta','warn');return;}
+  // Si NO estaba cancelada, reponer inventario (si ya estaba cancelada, ya fue repuesto antes)
+  if(!v.cancelada){
+    v.items.forEach(it=>{
+      const inv=inventory[v.storeId]?.[it.productId]||{qty:0,lots:[]};
+      inv.qty=parseFloat(((inv.qty||0)+it.qty).toFixed(3));
+      inv.lots=inv.lots||[];
+      inv.lots.push({id:'DEL-'+uid(),qty:parseFloat(it.qty.toFixed(3)),expiry:null,cost:(getProduct(it.productId)?.cost)||it.price||0});
+      if(!inventory[v.storeId]) inventory[v.storeId]={};
+      inventory[v.storeId][it.productId]=inv;
+      movimientos.push({id:'MV'+uid(),storeId:v.storeId,tipo:'Entrada',productId:it.productId,qty:it.qty,motivo:'Eliminación de venta por admin',ref:v.folio,userId:state.user.id,fecha:nowISO()});
+    });
+  }
+  const folioTxt=v.folio;
+  // Marcar id como eliminado para que el merge nunca lo reviva
+  deletedSaleIds=[...new Set([...deletedSaleIds,id])];
+  // Borrar la venta del arreglo
+  sales=sales.filter(s=>s.id!==id);
+  saveData();
+  showToast(`🗑️ Venta ${folioTxt} eliminada — inventario actualizado`);
   renderVentasDia(activeStoreId()||v.storeId);
   renderTopbar();
 }
@@ -3582,7 +3651,7 @@ let pushPending = false;
 // Reúne todo el estado en un solo objeto (mismo formato que localStorage)
 // NOTA: `usuarios` ya NO se sincroniza — los usuarios viven en Supabase Auth + tabla `perfiles`.
 function collectData(){
-  return {products,categories,inventory,sales,purchases,mermaList,traslados,movimientos,cajaLog,cajaActiva,proveedores,metas,solicitudes};
+  return {products,categories,inventory,sales,purchases,mermaList,traslados,movimientos,cajaLog,cajaActiva,proveedores,metas,solicitudes,deletedSaleIds};
 }
 // Vuelca un objeto de datos a las variables globales (reusado por carga local, nube y realtime)
 function applyData(d){
@@ -3602,6 +3671,7 @@ function applyData(d){
   usuarios    = d.usuarios&&d.usuarios.length?d.usuarios:[...DEFAULT_USERS];
   metas       = d.metas       || {s1:{diaria:0},s2:{diaria:0}};
   solicitudes = d.solicitudes || [];
+  deletedSaleIds = d.deletedSaleIds || [];
 }
 
 // ── FUSIÓN POR ID (evita que una tienda pise los registros de la otra) ──
@@ -3616,6 +3686,29 @@ function mergeArr(localArr, remoteArr){
   if(!Array.isArray(localArr))  return remoteArr;
   const m = new Map(localArr.map(x=>[keyOf(x), x]));
   remoteArr.forEach(x=> m.set(keyOf(x), x));
+  return [...m.values()];
+}
+// Merge especial para ventas: cancelada:true es irreversible y siempre gana.
+// Si el local tiene cancelada y el remoto no → se conserva la cancelación.
+// Si el remoto tiene cancelada y el local no → se acepta la cancelación del remoto.
+// Esto corrige el bug donde cloudPush pre-merge sobrescribía la cancelación con la versión sin cancelar de la nube.
+function mergeSales(localArr, remoteArr, delIds){
+  if(!Array.isArray(remoteArr)) return Array.isArray(localArr)?localArr:[];
+  if(!Array.isArray(localArr))  return remoteArr;
+  const delSet = new Set(delIds||[]);
+  const m = new Map(localArr.filter(x=>!delSet.has(keyOf(x))).map(x=>[keyOf(x), x]));
+  remoteArr.forEach(x=>{
+    const k = keyOf(x);
+    if(delSet.has(k)) return;          // eliminada permanentemente → no revive
+    const loc = m.get(k);
+    if(!loc){
+      m.set(k, x);                     // registro nuevo del remoto → agregar
+    } else if(x.cancelada && !loc.cancelada){
+      m.set(k, x);                     // remoto tiene cancelación → aceptar
+    }
+    // loc.cancelada && !x.cancelada → local ya está cancelada, conservar (no hacer nada)
+    // ninguno cancelado → local gana (ya está en el mapa)
+  });
   return [...m.values()];
 }
 // Inventario: une claves de tienda y producto. dir='cloud' → gana remoto; dir='local' → gana local.
@@ -3651,7 +3744,8 @@ function mergeRemote(d){
   if(d.products)              products    = d.products;
   if(d.categories)            categories  = d.categories;
   inventory   = mergeInv(inventory, d.inventory, 'cloud');
-  sales       = mergeArr(sales,       d.sales);
+  deletedSaleIds = [...new Set([...(deletedSaleIds||[]), ...(d.deletedSaleIds||[])])];
+  sales       = mergeSales(sales,     d.sales, deletedSaleIds);
   purchases   = mergeArr(purchases,   d.purchases);
   mermaList   = mergeArr(mermaList,   d.mermaList);
   traslados   = mergeArr(traslados,   d.traslados);
@@ -3735,7 +3829,8 @@ async function cloudPush(overwrite){
       const { data: cur } = await supa.from(CLOUD_TABLE).select('data').eq('id',CLOUD_ROW_ID).maybeSingle();
       const r = cur && cur.data;
       if(r && r.products!==undefined){
-        sales       = mergeArr(sales,       r.sales);
+        deletedSaleIds = [...new Set([...(deletedSaleIds||[]), ...(r.deletedSaleIds||[])])];
+        sales       = mergeSales(sales,     r.sales, deletedSaleIds);
         purchases   = mergeArr(purchases,   r.purchases);
         mermaList   = mergeArr(mermaList,   r.mermaList);
         traslados   = mergeArr(traslados,   r.traslados);
